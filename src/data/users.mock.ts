@@ -1,0 +1,128 @@
+import type { UserProfile } from '@/types'
+
+export interface MockUserRecord extends UserProfile {
+  passwordHash: string // For mock login comparison
+}
+
+export const mockUsers: MockUserRecord[] = [
+  {
+    id: 'usr-customer-1',
+    name: 'Nguyễn Văn Hùng',
+    email: 'user@nova.vn',
+    passwordHash: 'user123',
+    phone: '0908123456',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
+    role: 'user',
+    createdAt: '2026-01-15T09:00:00Z',
+    addresses: [
+      {
+        id: 'addr-1',
+        fullName: 'Nguyễn Văn Hùng',
+        phone: '0908123456',
+        province: 'Thành phố Hồ Chí Minh',
+        district: 'Quận 1',
+        ward: 'Phường Bến Nghé',
+        addressDetail: 'Số 123 Đường Lê Lợi, Tòa nhà Saigon Center',
+        isDefault: true,
+      },
+      {
+        id: 'addr-2',
+        fullName: 'Nguyễn Văn Hùng (Nhà riêng)',
+        phone: '0908123456',
+        province: 'Thành phố Hồ Chí Minh',
+        district: 'Quận 7',
+        ward: 'Phường Tân Phong',
+        addressDetail: 'Căn hộ B-1204, Chung cư Sky Garden 3, Đường Nguyễn Văn Linh',
+        isDefault: false,
+      },
+    ],
+  },
+  {
+    id: 'usr-admin-1',
+    name: 'Quản Trị Viên NOVA',
+    email: 'admin@nova.vn',
+    passwordHash: 'admin123',
+    phone: '0988776655',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop',
+    role: 'admin',
+    createdAt: '2025-10-01T08:00:00Z',
+    addresses: [
+      {
+        id: 'addr-admin',
+        fullName: 'Trụ Sở NOVA Commerce',
+        phone: '0988776655',
+        province: 'Thành phố Hà Nội',
+        district: 'Quận Cầu Giấy',
+        ward: 'Phường Dịch Vọng Hậu',
+        addressDetail: 'Tầng 18, Keangnam Landmark 72, Đường Phạm Hùng',
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: 'usr-customer-2',
+    name: 'Trần Thị Mai',
+    email: 'tran.mai@gmail.com',
+    passwordHash: 'pass123',
+    phone: '0912345678',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
+    role: 'user',
+    createdAt: '2026-03-10T14:30:00Z',
+    addresses: [
+      {
+        id: 'addr-3',
+        fullName: 'Trần Thị Mai',
+        phone: '0912345678',
+        province: 'Thành phố Hà Nội',
+        district: 'Quận Ba Đình',
+        ward: 'Phường Kim Mã',
+        addressDetail: 'Số 45 Ngõ 12 Đội Cấn',
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: 'usr-customer-3',
+    name: 'Lê Hoàng Nam',
+    email: 'nam.lehoang@gmail.com',
+    passwordHash: 'pass123',
+    phone: '0933557799',
+    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?q=80&w=200&auto=format&fit=crop',
+    role: 'user',
+    createdAt: '2026-05-18T10:15:00Z',
+    addresses: [
+      {
+        id: 'addr-4',
+        fullName: 'Lê Hoàng Nam',
+        phone: '0933557799',
+        province: 'Thành phố Đà Nẵng',
+        district: 'Quận Hải Châu',
+        ward: 'Phường Thạch Thang',
+        addressDetail: 'Số 88 Đường Bạch Đằng',
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: 'usr-customer-4',
+    name: 'Phạm Quỳnh Anh',
+    email: 'quynhanh.pham@outlook.com',
+    passwordHash: 'pass123',
+    phone: '0944882211',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&auto=format&fit=crop',
+    role: 'user',
+    createdAt: '2026-07-02T16:45:00Z',
+    addresses: [
+      {
+        id: 'addr-5',
+        fullName: 'Phạm Quỳnh Anh',
+        phone: '0944882211',
+        province: 'Thành phố Cần Thơ',
+        district: 'Quận Ninh Kiều',
+        ward: 'Phường An Cư',
+        addressDetail: 'Số 15 Đại Lộ Hòa Bình',
+        isDefault: true,
+      },
+    ],
+  },
+]
