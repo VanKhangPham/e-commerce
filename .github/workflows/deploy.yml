@@ -22,8 +22,8 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t ${{ secrets.DOCKER_USERNAME }}/wtabs_socibot_ai:latest \
-            -t ${{ secrets.DOCKER_USERNAME }}/wtabs_socibot_ai:${{ github.sha }} .
+            -t ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:latest \
+            -t ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:${{ github.sha }} .
 
       - name: Push Docker image
         run: |
