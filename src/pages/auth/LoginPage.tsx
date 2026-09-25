@@ -59,7 +59,7 @@ export const LoginPage: React.FC = () => {
       setValue('email', 'user@nova.vn')
       setValue('password', 'user123')
       await loginDemo('user')
-      showToast('Đăng nhập thành công với tài khoản khách hàng mẫu (Nguyễn Văn Hùng)!', 'success')
+      showToast('Đăng nhập thành công với tài khoản khách hàng mẫu (Phạm Văn Khang)!', 'success')
       navigate(fromLocation, { replace: true })
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Đăng nhập demo thất bại'

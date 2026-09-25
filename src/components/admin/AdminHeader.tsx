@@ -88,7 +88,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onToggleSidebar }) => 
                 </div>
                 <div className="py-2">
                   <p className="font-semibold text-slate-800">Đánh giá mới chờ duyệt</p>
-                  <p className="text-[11px] text-slate-400">Nguyễn Văn Hùng đánh giá 5 sao cho iPhone 16 Pro Max</p>
+                  <p className="text-[11px] text-slate-400">Phạm Văn Khang đánh giá 5 sao cho iPhone 16 Pro Max</p>
                   <span className="text-[10px] text-slate-400">1 giờ trước</span>
                 </div>
               </div>

@@ -7,7 +7,7 @@ export interface MockUserRecord extends UserProfile {
 export const mockUsers: MockUserRecord[] = [
   {
     id: 'usr-customer-1',
-    name: 'Nguyễn Văn Hùng',
+    name: 'Phạm Văn Khang',
     email: 'user@nova.vn',
     passwordHash: 'user123',
     phone: '0908123456',
@@ -17,7 +17,7 @@ export const mockUsers: MockUserRecord[] = [
     addresses: [
       {
         id: 'addr-1',
-        fullName: 'Nguyễn Văn Hùng',
+        fullName: 'Phạm Văn Khang',
         phone: '0908123456',
         province: 'Thành phố Hồ Chí Minh',
         district: 'Quận 1',
@@ -27,7 +27,7 @@ export const mockUsers: MockUserRecord[] = [
       },
       {
         id: 'addr-2',
-        fullName: 'Nguyễn Văn Hùng (Nhà riêng)',
+        fullName: 'Phạm Văn Khang (Nhà riêng)',
         phone: '0908123456',
         province: 'Thành phố Hồ Chí Minh',
         district: 'Quận 7',
