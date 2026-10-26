@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nova_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nova_admin
+      POSTGRES_PASSWORD: nova_secret_2026
+      POSTGRES_DB: nova_commerce_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - nova_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova_admin -d nova_commerce_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: nova_adminer_gui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  nova_pgdata:
+    driver: local

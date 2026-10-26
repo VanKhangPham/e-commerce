@@ -15,7 +15,7 @@ export const AdminLayout: React.FC = () => {
 
   return (
     // <div className="min-h-screen bg-slate-100/70 text-slate-800 flex font-sans">
-    <div className="min-h-screen bg-red-500/70 text-slate-800 flex font-sans">
+    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex font-sans">
       {/* Sidebar for Desktop & Mobile */}
       <AdminSidebar
         isOpen={isSidebarOpen}

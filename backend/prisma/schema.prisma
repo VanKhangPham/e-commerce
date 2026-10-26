@@ -1,0 +1,383 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPING
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  BANKING
+  MOMO
+  VNPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum VariantType {
+  COLOR
+  SIZE
+  VERSION
+}
+
+model User {
+  id           String         @id @default(uuid())
+  name         String
+  email        String         @unique
+  phone        String?
+  password     String
+  avatar       String?
+  role         Role           @default(USER)
+  isBlocked    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  addresses    Address[]
+  refreshTokens RefreshToken[]
+  orders       Order[]
+  cart         Cart?
+  wishlist     WishlistItem[]
+  reviews      Review[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  tokenHash  String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Address {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName      String
+  phone         String
+  province      String
+  district      String
+  ward          String
+  addressDetail String
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                 String               @id @default(uuid())
+  name               String
+  slug               String               @unique
+  price              Int
+  originalPrice      Int
+  discountPercentage Int                  @default(0)
+  rating             Float                @default(5.0)
+  reviewCount        Int                  @default(0)
+  stock              Int                  @default(0)
+  soldCount          Int                  @default(0)
+  thumbnail          String
+  categoryId         String
+  category           Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand              String
+  shortDescription   String
+  description        String
+  isFeatured         Boolean              @default(false)
+  isBestSeller       Boolean              @default(false)
+  isFlashSale        Boolean              @default(false)
+  flashSaleEndsAt    DateTime?
+  tags               String[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  images             ProductImage[]
+  variants           ProductVariant[]
+  specifications     ProductSpecification[]
+  cartItems          CartItem[]
+  wishlistItems      WishlistItem[]
+  orderItems         OrderItem[]
+  reviews            Review[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([price])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  order     Int      @default(0)
+  isPrimary Boolean  @default(false)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model ProductVariant {
+  id            String      @id @default(uuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name          String
+  type          VariantType @default(COLOR)
+  value         String
+  priceModifier Int         @default(0)
+  inStock       Boolean     @default(true)
+  sku           String?
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductSpecification {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  value     String
+
+  @@index([productId])
+  @@map("product_specifications")
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId, variantId])
+  @@map("cart_items")
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlist_items")
+}
+
+model Order {
+  id              String         @id @default(uuid())
+  orderNumber     String         @unique
+  userId          String?
+  user            User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName    String
+  customerPhone   String
+  customerEmail   String
+  shippingAddress Json
+  paymentMethod   PaymentMethod  @default(COD)
+  paymentStatus   PaymentStatus  @default(PENDING)
+  orderStatus     OrderStatus    @default(PENDING)
+  subtotal        Int
+  shippingFee     Int            @default(0)
+  discountAmount  Int            @default(0)
+  totalAmount     Int
+  couponCode      String?
+  note            String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items           OrderItem[]
+  timeline        OrderTimeline[]
+
+  @@index([orderNumber])
+  @@index([userId])
+  @@index([orderStatus])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                  String   @id @default(uuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId           String?
+  product             Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName         String
+  productSlug         String
+  image               String
+  price               Int
+  quantity            Int
+  selectedVariantName String?
+  totalPrice          Int
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderTimeline {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+  @@map("order_timelines")
+}
+
+model Coupon {
+  id            String     @id @default(uuid())
+  code          String     @unique
+  description   String
+  discountType  CouponType @default(PERCENTAGE)
+  discountValue Int
+  minOrderValue Int        @default(0)
+  maxDiscount   Int?
+  expiryDate    DateTime
+  usageLimit    Int        @default(100)
+  usageCount    Int        @default(0)
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([code])
+  @@map("coupons")
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating        Int
+  comment       String
+  approved      Boolean  @default(true)
+  orderVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+model BlogPost {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  title        String
+  excerpt      String
+  content      String
+  category     String
+  categoryName String
+  coverImage   String
+  authorName   String
+  authorAvatar String?
+  publishedAt  DateTime @default(now())
+  readTime     String
+  isFeatured   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([slug])
+  @@map("blog_posts")
+}
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("contact_messages")
+}
+
+model StoreSetting {
+  id                     String   @id @default("default")
+  storeName              String
+  hotline                String
+  email                  String
+  address                String
+  slogan                 String?
+  standardShippingFee    Int      @default(30000)
+  freeShippingThreshold  Int      @default(2000000)
+  enableCOD              Boolean  @default(true)
+  enableBanking          Boolean  @default(true)
+  enableMoMo             Boolean  @default(true)
+  enableVNPay            Boolean  @default(true)
+  notifyOrderEmail       Boolean  @default(true)
+  notifyLowStock         Boolean  @default(true)
+  notifyAdminTelegram    Boolean  @default(false)
+  updatedAt              DateTime @updatedAt
+
+  @@map("store_settings")
+}
