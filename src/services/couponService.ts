@@ -1,23 +1,60 @@
-import { mockCoupons } from '@/data'
 import type { Coupon } from '@/types'
-import { fakeDelay, getStoredData, setStoredData } from './apiHelper'
+import { api } from './httpClient'
 
-const STORAGE_KEY_COUPONS = 'nova_coupons_data'
-
-function loadCoupons(): Coupon[] {
-  return getStoredData<Coupon[]>(STORAGE_KEY_COUPONS, mockCoupons)
+interface BackendCoupon {
+  id: string
+  code: string
+  description: string
+  discountType: string
+  discountValue: number
+  minOrderValue: number
+  maxDiscount?: number | null
+  expiryDate: string
+  usageLimit: number
+  usageCount: number
+  isActive: boolean
 }
 
-function saveCoupons(coupons: Coupon[]): void {
-  setStoredData(STORAGE_KEY_COUPONS, coupons)
+interface ValidateCouponResponse {
+  id: string
+  code: string
+  description: string
+  discountType: string
+  discountValue: number
+  discountAmount: number
+  minOrderValue: number
+  maxDiscount?: number | null
+  expiryDate: string
+}
+
+function formatCoupon(c: BackendCoupon): Coupon {
+  return {
+    id: c.id,
+    code: c.code,
+    description: c.description,
+    discountType: (c.discountType?.toLowerCase() === 'fixed' ? 'fixed' : 'percentage'),
+    discountValue: c.discountValue,
+    minOrderValue: c.minOrderValue,
+    maxDiscount: c.maxDiscount || undefined,
+    expiryDate: c.expiryDate,
+    usageLimit: c.usageLimit,
+    usageCount: c.usageCount,
+    isActive: c.isActive,
+  }
 }
 
 export const couponService = {
+  /**
+   * Get all coupons (for Admin or coupon listings)
+   */
   async getCoupons(): Promise<Coupon[]> {
-    await fakeDelay(200)
-    return loadCoupons()
+    const res = await api.get<BackendCoupon[]>('/admin/coupons')
+    return (res.data || []).map(formatCoupon)
   },
 
+  /**
+   * Validate coupon code against cart total
+   */
   async validateCoupon(
     code: string,
     orderTotal: number
@@ -27,105 +64,84 @@ export const couponService = {
     discountAmount: number
     message: string
   }> {
-    await fakeDelay(250)
-    const list = loadCoupons()
-    const cleanCode = code.trim().toUpperCase()
-    const found = list.find((c) => c.code.toUpperCase() === cleanCode)
+    try {
+      const res = await api.post<ValidateCouponResponse>('/coupons/validate', {
+        code: code.trim().toUpperCase(),
+        cartTotal: Math.round(orderTotal),
+      })
 
-    if (!found) {
+      const validated = res.data
+      const fullCoupon: Coupon = {
+        id: validated.id,
+        code: validated.code,
+        description: validated.description,
+        discountType: validated.discountType === 'fixed' ? 'fixed' : 'percentage',
+        discountValue: validated.discountValue,
+        minOrderValue: validated.minOrderValue,
+        maxDiscount: validated.maxDiscount || undefined,
+        expiryDate: validated.expiryDate,
+        usageLimit: 1000,
+        usageCount: 0,
+        isActive: true,
+      }
+
+      return {
+        isValid: true,
+        coupon: fullCoupon,
+        discountAmount: validated.discountAmount,
+        message: res.message || 'Áp dụng mã giảm giá thành công!',
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Mã giảm giá không hợp lệ'
       return {
         isValid: false,
         discountAmount: 0,
-        message: 'Mã giảm giá không tồn tại hoặc đã hết hạn.',
+        message: msg,
       }
-    }
-
-    if (!found.isActive) {
-      return {
-        isValid: false,
-        discountAmount: 0,
-        message: 'Mã giảm giá hiện đang tạm ngưng sử dụng.',
-      }
-    }
-
-    const now = new Date()
-    const expiry = new Date(found.expiryDate)
-    if (now > expiry) {
-      return {
-        isValid: false,
-        discountAmount: 0,
-        message: 'Mã giảm giá đã quá hạn sử dụng.',
-      }
-    }
-
-    if (found.usageCount >= found.usageLimit) {
-      return {
-        isValid: false,
-        discountAmount: 0,
-        message: 'Mã giảm giá đã hết lượt sử dụng.',
-      }
-    }
-
-    if (orderTotal < found.minOrderValue) {
-      return {
-        isValid: false,
-        discountAmount: 0,
-        message: `Đơn hàng tối thiểu để áp dụng mã là ${new Intl.NumberFormat('vi-VN').format(found.minOrderValue)}₫`,
-      }
-    }
-
-    let discount = 0
-    if (found.discountType === 'percentage') {
-      discount = (orderTotal * found.discountValue) / 100
-      if (found.maxDiscount && discount > found.maxDiscount) {
-        discount = found.maxDiscount
-      }
-    } else {
-      discount = found.discountValue
-    }
-
-    // Discount cannot exceed order total
-    discount = Math.min(discount, orderTotal)
-
-    return {
-      isValid: true,
-      coupon: found,
-      discountAmount: discount,
-      message: 'Áp dụng mã giảm giá thành công!',
     }
   },
 
+  /**
+   * Admin: Create new coupon
+   */
   async createCoupon(data: Omit<Coupon, 'id' | 'usageCount'>): Promise<Coupon> {
-    await fakeDelay(350)
-    const list = loadCoupons()
-    const newCoupon: Coupon = {
-      ...data,
-      id: `c-${Date.now()}`,
+    const payload = {
       code: data.code.trim().toUpperCase(),
-      usageCount: 0,
+      description: data.description,
+      discountType: data.discountType.toUpperCase(),
+      discountValue: data.discountValue,
+      minOrderValue: data.minOrderValue,
+      maxDiscount: data.maxDiscount || null,
+      expiryDate: data.expiryDate,
+      usageLimit: data.usageLimit,
+      isActive: data.isActive,
     }
-    list.unshift(newCoupon)
-    saveCoupons(list)
-    return newCoupon
+
+    const res = await api.post<BackendCoupon>('/admin/coupons', payload)
+    return formatCoupon(res.data)
   },
 
+  /**
+   * Admin: Update coupon
+   */
   async updateCoupon(id: string, updates: Partial<Coupon>): Promise<Coupon> {
-    await fakeDelay(300)
-    const list = loadCoupons()
-    const index = list.findIndex((c) => c.id === id)
-    if (index === -1) {
-      throw new Error('Mã giảm giá không tồn tại')
+    const payload: Record<string, unknown> = { ...updates }
+    if (updates.discountType) {
+      payload.discountType = updates.discountType.toUpperCase()
     }
-    list[index] = { ...list[index], ...updates }
-    saveCoupons(list)
-    return list[index]
+    if (updates.code) {
+      payload.code = updates.code.toUpperCase()
+    }
+
+    const res = await api.put<BackendCoupon>(`/admin/coupons/${id}`, payload)
+    return formatCoupon(res.data)
   },
 
+  /**
+   * Admin: Delete coupon
+   */
   async deleteCoupon(id: string): Promise<boolean> {
-    await fakeDelay(250)
-    const list = loadCoupons()
-    const filtered = list.filter((c) => c.id !== id)
-    saveCoupons(filtered)
+    await api.delete(`/admin/coupons/${id}`)
     return true
   },
 }

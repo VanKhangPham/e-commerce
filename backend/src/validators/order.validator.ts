@@ -10,6 +10,12 @@ export const shippingAddressSchema = z.object({
   addressDetail: z.string().min(5, 'Địa chỉ cụ thể phải có ít nhất 5 ký tự'),
 });
 
+const orderItemInputSchema = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().optional().nullable(),
+  quantity: z.number().int().min(1),
+});
+
 export const createOrderSchema = z.object({
   customerName: z.string().min(2, 'Tên khách hàng phải có ít nhất 2 ký tự'),
   customerPhone: z.string().regex(/^(0|\+84)[3|5|7|8|9][0-9]{8}$/, 'Số điện thoại không hợp lệ'),
@@ -18,6 +24,7 @@ export const createOrderSchema = z.object({
   paymentMethod: z.enum(['COD', 'BANKING', 'MOMO', 'VNPAY']).default('COD'),
   couponCode: z.string().optional().nullable(),
   note: z.string().optional().nullable(),
+  items: z.array(orderItemInputSchema).optional(),
 });
 
 export const updateOrderStatusSchema = z.object({

@@ -21,9 +21,23 @@ export const createApp = (): Express => {
     })
   );
 
+  const allowedOrigins = env.isProduction
+    ? env.CLIENT_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+    : [
+        ...env.CLIENT_ORIGIN.split(',').map((o) => o.trim()),
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+      ].filter(Boolean);
+
   app.use(
     cors({
-      origin: [env.CLIENT_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

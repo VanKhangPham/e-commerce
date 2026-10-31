@@ -58,7 +58,7 @@ export const AdminCategoriesPage: React.FC = () => {
     setEditingCategory(c)
     setName(c.name)
     setSlug(c.slug)
-    setDescription(c.description)
+    setDescription(c.description || '')
     setImage(c.image || '')
     setIsModalOpen(true)
   }

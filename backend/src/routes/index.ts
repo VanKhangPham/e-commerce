@@ -29,6 +29,7 @@ apiRouter.use('/categories', categoryRoutes);
 apiRouter.use('/cart', cartRoutes);
 apiRouter.use('/wishlist', wishlistRoutes);
 apiRouter.use('/orders', orderRoutes);
+apiRouter.use('/user/orders', orderRoutes);
 apiRouter.use('/coupons', couponRoutes);
 apiRouter.use('/reviews', reviewRoutes);
 apiRouter.use('/blog', blogRoutes);

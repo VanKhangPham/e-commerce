@@ -9,6 +9,8 @@ import {
   Ticket,
   Eye,
   Clock,
+  Users,
+  Loader2,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -21,32 +23,10 @@ import {
   BarChart,
   Bar,
 } from 'recharts'
-import { orderService, productService } from '@/services'
-import type { Order, Product, OrderStatus } from '@/types'
+import { adminService, orderService } from '@/services'
+import type { DashboardStats } from '@/services/adminService'
+import type { Order, OrderStatus } from '@/types'
 import { formatCurrency, formatDate } from '@/utils'
-
-const revenueData = [
-  { month: 'T1', revenue: 145000000, orders: 42 },
-  { month: 'T2', revenue: 198000000, orders: 58 },
-  { month: 'T3', revenue: 165000000, orders: 51 },
-  { month: 'T4', revenue: 245000000, orders: 79 },
-  { month: 'T5', revenue: 280000000, orders: 94 },
-  { month: 'T6', revenue: 310000000, orders: 112 },
-  { month: 'T7', revenue: 290000000, orders: 98 },
-  { month: 'T8', revenue: 360000000, orders: 128 },
-  { month: 'T9', revenue: 420000000, orders: 145 },
-  { month: 'T10', revenue: 395000000, orders: 136 },
-  { month: 'T11', revenue: 480000000, orders: 168 },
-  { month: 'T12', revenue: 540000000, orders: 195 },
-]
-
-const categorySalesData = [
-  { name: 'Điện thoại', sales: 480 },
-  { name: 'Laptop', sales: 320 },
-  { name: 'Âm thanh', sales: 260 },
-  { name: 'Đồng hồ', sales: 190 },
-  { name: 'Phụ kiện', sales: 380 },
-]
 
 const statusBadgeMap: Record<OrderStatus, { text: string; bg: string; textCol: string }> = {
   pending: { text: 'Chờ xác nhận', bg: 'bg-amber-50 border-amber-200', textCol: 'text-amber-800' },
@@ -57,35 +37,60 @@ const statusBadgeMap: Record<OrderStatus, { text: string; bg: string; textCol: s
 }
 
 export const AdminDashboardPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [topProducts, setTopProducts] = useState<Product[]>([])
-  const [totalProductsCount, setTotalProductsCount] = useState(0)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const loadDashboardData = async () => {
+      setIsLoading(true)
       try {
-        const [ordersList, productsRes] = await Promise.all([
+        const [dashboardStats, ordersList] = await Promise.all([
+          adminService.getDashboardStats(),
           orderService.getOrders(),
-          productService.getProducts({ limit: 50 }),
         ])
-        setOrders(ordersList)
-        setTotalProductsCount(productsRes.totalItems)
 
-        // Sort products by sold count for bestsellers
-        const sorted = [...productsRes.items].sort((a, b) => b.soldCount - a.soldCount)
-        setTopProducts(sorted.slice(0, 5))
+        setStats(dashboardStats)
+        setRecentOrders(ordersList.slice(0, 5))
       } catch (err) {
         console.error('Error loading dashboard data:', err)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     loadDashboardData()
   }, [])
 
-  // Metrics calculation
-  const totalRevenue = orders.reduce((acc, o) => acc + (o.orderStatus !== 'cancelled' ? o.totalAmount : 0), 0)
-  const totalOrdersCount = orders.length
-  const pendingOrdersCount = orders.filter((o) => o.orderStatus === 'pending').length
+  // Derive values from stats, with fallbacks
+  const totalRevenue = stats?.kpis.totalRevenue ?? 0
+  const totalOrdersCount = stats?.kpis.totalOrders ?? 0
+  const totalProductsCount = stats?.kpis.totalProducts ?? 0
+  const totalCustomersCount = stats?.kpis.totalCustomers ?? 0
+
+  const revenueData = stats?.monthlyRevenue ?? []
+  const categorySalesData = (stats?.categorySales ?? []).map((c) => ({
+    name: c.name,
+    sales: c.sales,
+  }))
+  const topProducts = stats?.topProducts ?? []
+
+  // Count pending orders from the fetched recent orders
+  const pendingOrdersCount = recentOrders.filter((o) => o.orderStatus === 'pending').length
+
+  // Find leading category
+  const leadingCategory = categorySalesData.length > 0
+    ? categorySalesData.reduce((best, c) => (c.sales > best.sales ? c : best), categorySalesData[0])
+    : null
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <span className="ml-3 text-sm text-slate-500">Đang tải dữ liệu dashboard...</span>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
@@ -132,13 +137,13 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-black text-slate-900">
-              {formatCurrency(totalRevenue || 128500000)}
+              {formatCurrency(totalRevenue)}
             </span>
             <div className="flex items-center gap-1.5 mt-2 text-xs">
               <span className="flex items-center text-emerald-600 font-bold">
-                <ArrowUpRight className="w-4 h-4" /> +18.4%
+                <ArrowUpRight className="w-4 h-4" /> Tổng cộng
               </span>
-              <span className="text-slate-400">so với tháng trước</span>
+              <span className="text-slate-400">tất cả đơn thành công</span>
             </div>
           </div>
         </div>
@@ -159,9 +164,9 @@ export const AdminDashboardPage: React.FC = () => {
             </span>
             <div className="flex items-center gap-1.5 mt-2 text-xs">
               <span className="flex items-center text-emerald-600 font-bold">
-                <ArrowUpRight className="w-4 h-4" /> +12.5%
+                <ArrowUpRight className="w-4 h-4" /> Tất cả
               </span>
-              <span className="text-slate-400">tăng trưởng tuần</span>
+              <span className="text-slate-400">đơn hàng trong hệ thống</span>
             </div>
           </div>
         </div>
@@ -178,13 +183,13 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
           <div>
             <span className="text-2xl font-black text-slate-900">
-              {totalProductsCount || 18} thiết bị
+              {totalProductsCount} thiết bị
             </span>
             <div className="flex items-center gap-1.5 mt-2 text-xs">
-              <span className="flex items-center text-indigo-600 font-bold">
-                100%
+              <span className="flex items-center text-sky-600 font-bold">
+                <Users className="w-4 h-4" /> {totalCustomersCount}
               </span>
-              <span className="text-slate-400">chính hãng còn hàng</span>
+              <span className="text-slate-400">khách hàng đã đăng ký</span>
             </div>
           </div>
         </div>
@@ -231,43 +236,50 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <div className="h-72 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  tickFormatter={(val) => `${val / 1000000}M`}
-                />
-                <Tooltip
-                  formatter={(val: any) => [formatCurrency(Number(val) || 0), 'Doanh thu']}
-                  labelFormatter={(lbl) => `Tháng ${lbl}`}
-                  contentStyle={{
-                    backgroundColor: '#0f172a',
-                    border: 'none',
-                    borderRadius: '12px',
-                    color: '#fff',
-                    fontSize: '12px',
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#4f46e5"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorRevenue)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {revenueData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tickFormatter={(val) => `${val / 1000000}M`}
+                  />
+                  <Tooltip
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={(val: any) => [formatCurrency(Number(val) || 0), 'Doanh thu']}
+                    labelFormatter={(lbl) => `Tháng ${lbl}`}
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      border: 'none',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#4f46e5"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorRevenue)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                Chưa có dữ liệu doanh thu
+              </div>
+            )}
           </div>
         </div>
 
@@ -279,28 +291,39 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <div className="h-60 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categorySalesData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip
-                  formatter={(val: any) => [`${val} sản phẩm`, 'Đã bán']}
-                  contentStyle={{
-                    backgroundColor: '#0f172a',
-                    border: 'none',
-                    borderRadius: '12px',
-                    color: '#fff',
-                    fontSize: '12px',
-                  }}
-                />
-                <Bar dataKey="sales" fill="#0284c7" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {categorySalesData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={categorySalesData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <Tooltip
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={(val: any) => [`${val} sản phẩm`, 'Đã bán']}
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      border: 'none',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Bar dataKey="sales" fill="#0284c7" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                Chưa có dữ liệu danh mục
+              </div>
+            )}
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Ngành dẫn đầu: <strong>Điện thoại (480 máy)</strong></span>
+            <span>
+              {leadingCategory
+                ? <>Ngành dẫn đầu: <strong>{leadingCategory.name} ({leadingCategory.sales} máy)</strong></>
+                : 'Chưa có dữ liệu'}
+            </span>
             <Link to="/admin/danh-muc" className="text-indigo-600 font-bold hover:underline">
               Chi tiết →
             </Link>
@@ -321,7 +344,7 @@ export const AdminDashboardPage: React.FC = () => {
               to="/admin/don-hang"
               className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
             >
-              Xem tất cả ({orders.length}) →
+              Xem tất cả ({totalOrdersCount}) →
             </Link>
           </div>
 
@@ -337,40 +360,48 @@ export const AdminDashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {orders.slice(0, 5).map((ord) => {
-                  const badge = statusBadgeMap[ord.orderStatus] || statusBadgeMap.pending
+                {recentOrders.length > 0 ? (
+                  recentOrders.map((ord) => {
+                    const badge = statusBadgeMap[ord.orderStatus] || statusBadgeMap.pending
 
-                  return (
-                    <tr key={ord.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="p-3 font-bold text-slate-900 whitespace-nowrap">
-                        #{ord.orderNumber}
-                      </td>
-                      <td className="p-3 text-slate-700">
-                        <p className="font-semibold text-slate-900">{ord.customerName}</p>
-                        <span className="text-[10px] text-slate-400">{formatDate(ord.createdAt)}</span>
-                      </td>
-                      <td className="p-3 font-black text-slate-900 whitespace-nowrap">
-                        {formatCurrency(ord.totalAmount)}
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badge.bg} ${badge.textCol}`}
-                        >
-                          {badge.text}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right whitespace-nowrap">
-                        <Link
-                          to={`/admin/don-hang`}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 inline-block transition-colors"
-                          title="Xem chi tiết"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
+                    return (
+                      <tr key={ord.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="p-3 font-bold text-slate-900 whitespace-nowrap">
+                          #{ord.orderNumber}
+                        </td>
+                        <td className="p-3 text-slate-700">
+                          <p className="font-semibold text-slate-900">{ord.customerName}</p>
+                          <span className="text-[10px] text-slate-400">{formatDate(ord.createdAt)}</span>
+                        </td>
+                        <td className="p-3 font-black text-slate-900 whitespace-nowrap">
+                          {formatCurrency(ord.totalAmount)}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badge.bg} ${badge.textCol}`}
+                          >
+                            {badge.text}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          <Link
+                            to={`/admin/don-hang`}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 inline-block transition-colors"
+                            title="Xem chi tiết"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-slate-400">
+                      Chưa có đơn hàng nào
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -392,17 +423,18 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {topProducts.map((p, idx) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
-              >
+            {topProducts.length > 0 ? (
+              topProducts.map((p, idx) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
+                >
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="w-5 text-center text-xs font-black text-slate-400">
                     #{idx + 1}
                   </span>
                   <img
-                    src={p.thumbnail || p.images[0]}
+                    src={p.thumbnail}
                     alt={p.name}
                     className="w-11 h-11 object-contain rounded-xl bg-slate-50 border p-1 flex-shrink-0"
                   />
@@ -423,7 +455,12 @@ export const AdminDashboardPage: React.FC = () => {
                   </span>
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <div className="p-6 text-center text-slate-400 text-sm">
+                Chưa có dữ liệu sản phẩm
+              </div>
+            )}
           </div>
         </div>
       </div>

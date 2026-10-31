@@ -20,6 +20,11 @@ export interface CreateOrderInput {
   paymentMethod: 'COD' | 'BANKING' | 'MOMO' | 'VNPAY';
   couponCode?: string | null;
   note?: string | null;
+  items?: Array<{
+    productId: string;
+    variantId?: string | null;
+    quantity: number;
+  }>;
 }
 
 export class OrderService {
@@ -39,7 +44,16 @@ export class OrderService {
       },
     });
 
-    if (!cart || cart.items.length === 0) {
+    const itemsToProcess: Array<{ productId: string; variantId?: string | null; quantity: number }> =
+      cart?.items && cart.items.length > 0
+        ? cart.items.map((it) => ({
+            productId: it.productId,
+            variantId: it.variantId,
+            quantity: it.quantity,
+          }))
+        : data.items || [];
+
+    if (itemsToProcess.length === 0) {
       throw ApiError.badRequest('Giỏ hàng của bạn đang trống, không thể tạo đơn hàng');
     }
 
@@ -66,14 +80,15 @@ export class OrderService {
         totalPrice: number;
       }> = [];
 
-      for (const item of cart.items) {
+      for (const item of itemsToProcess) {
         // Query fresh stock inside transaction
         const freshProduct = await tx.product.findUnique({
           where: { id: item.productId },
+          include: { variants: true },
         });
 
         if (!freshProduct) {
-          throw ApiError.badRequest(`Sản phẩm "${item.product.name}" không còn tồn tại`);
+          throw ApiError.badRequest(`Sản phẩm không còn tồn tại trong hệ thống`);
         }
 
         if (freshProduct.stock < item.quantity) {
@@ -83,7 +98,7 @@ export class OrderService {
         }
 
         const selectedVariant = item.variantId
-          ? item.product.variants.find((v) => v.id === item.variantId)
+          ? freshProduct.variants.find((v) => v.id === item.variantId)
           : null;
 
         const unitPrice = freshProduct.price + (selectedVariant ? selectedVariant.priceModifier : 0);
@@ -101,14 +116,23 @@ export class OrderService {
           totalPrice: itemTotal,
         });
 
-        // Decrement product stock and increment sold count
-        await tx.product.update({
-          where: { id: freshProduct.id },
+        // Decrement product stock and increment sold count conditionally
+        const updatedStock = await tx.product.updateMany({
+          where: {
+            id: freshProduct.id,
+            stock: { gte: item.quantity },
+          },
           data: {
             stock: { decrement: item.quantity },
             soldCount: { increment: item.quantity },
           },
         });
+
+        if (updatedStock.count === 0) {
+          throw ApiError.badRequest(
+            `Sản phẩm "${freshProduct.name}" không đủ số lượng trong kho hoặc đã hết hàng do đơn hàng khác vừa mua`
+          );
+        }
       }
 
       // Step B: Calculate Shipping Fee
@@ -123,11 +147,18 @@ export class OrderService {
         discountAmount = couponResult.discountAmount;
         appliedCouponCode = couponResult.code;
 
-        // Increment coupon usage count
-        await tx.coupon.update({
-          where: { id: couponResult.id },
+        // Atomically increment coupon usage count only if below limit
+        const updatedCoupon = await tx.coupon.updateMany({
+          where: {
+            id: couponResult.id,
+            usageCount: { lt: couponResult.usageLimit },
+          },
           data: { usageCount: { increment: 1 } },
         });
+
+        if (updatedCoupon.count === 0) {
+          throw ApiError.badRequest('Mã giảm giá đã hết lượt sử dụng do đơn hàng khác vừa áp dụng');
+        }
       }
 
       const totalAmount = Math.max(0, subtotal + shippingFee - discountAmount);
@@ -176,9 +207,11 @@ export class OrderService {
       });
 
       // Step F: Clear user's cart
-      await tx.cartItem.deleteMany({
-        where: { cartId: cart.id },
-      });
+      if (cart) {
+        await tx.cartItem.deleteMany({
+          where: { cartId: cart.id },
+        });
+      }
 
       return order;
     });

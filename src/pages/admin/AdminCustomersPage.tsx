@@ -8,8 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { mockUsers } from '@/data'
-import { orderService } from '@/services'
+import { orderService, authService } from '@/services'
 import type { UserProfile, Order } from '@/types'
 import { formatCurrency, formatDate } from '@/utils'
 import { useToastStore } from '@/store'
@@ -40,9 +39,10 @@ export const AdminCustomersPage: React.FC = () => {
     const loadCustomerData = async () => {
       setIsLoading(true)
       try {
-        const storedUsersStr = localStorage.getItem('nova_users_accounts')
-        const allUsers: UserProfile[] = storedUsersStr ? JSON.parse(storedUsersStr) : mockUsers
-        const allOrders = await orderService.getOrders()
+        const [allUsers, allOrders] = await Promise.all([
+          authService.getUsers(),
+          orderService.getOrders(),
+        ])
         setOrders(allOrders)
 
         // Only show users with role 'user'
@@ -50,45 +50,56 @@ export const AdminCustomersPage: React.FC = () => {
           .filter((u) => u.role === 'user')
           .map((u) => {
             const userOrders = allOrders.filter((o) => o.customerId === u.id)
-            const totalSpent = userOrders.reduce((sum, o) => sum + (o.orderStatus !== 'cancelled' ? o.totalAmount : 0), 0)
+            const calculatedTotalSpent = userOrders.reduce(
+              (sum, o) => sum + (o.orderStatus !== 'cancelled' ? o.totalAmount : 0),
+              0
+            )
             return {
               ...u,
-              isBlocked: false,
-              totalOrders: userOrders.length,
-              totalSpent,
+              isBlocked: Boolean(u.isBlocked),
+              totalOrders: u.orderCount ?? userOrders.length,
+              totalSpent: u.totalSpent ?? calculatedTotalSpent,
             }
           })
 
         setCustomers(customerList)
-      } catch (err) {
-        console.error('Error fetching customers:', err)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Không thể tải danh sách khách hàng'
+        showToast(msg, 'error')
       } finally {
         setIsLoading(false)
       }
     }
 
     loadCustomerData()
-  }, [])
+  }, [showToast])
 
   // Toggle Lock / Unlock
-  const handleToggleBlock = (id: string, name: string, currentBlocked: boolean) => {
+  const handleToggleBlock = async (id: string, name: string, currentBlocked: boolean) => {
     const actionText = currentBlocked ? 'mở khóa' : 'tạm khóa'
     if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản của "${name}"?`)) return
 
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isBlocked: !currentBlocked } : c))
-    )
+    try {
+      const res = await authService.toggleBlockCustomer(id)
 
-    if (selectedCustomer?.id === id) {
-      setSelectedCustomer((prev) => prev ? { ...prev, isBlocked: !currentBlocked } : null)
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, isBlocked: res.isBlocked } : c))
+      )
+
+      if (selectedCustomer?.id === id) {
+        setSelectedCustomer((prev) => (prev ? { ...prev, isBlocked: res.isBlocked } : null))
+      }
+
+      showToast(
+        res.isBlocked
+          ? `Đã tạm khóa tài khoản "${name}"!`
+          : `Đã mở khóa tài khoản "${name}" thành công!`,
+        res.isBlocked ? 'warning' : 'success'
+      )
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Thao tác thay đổi trạng thái tài khoản thất bại'
+      showToast(msg, 'error')
     }
-
-    showToast(
-      currentBlocked
-        ? `Đã mở khóa tài khoản "${name}" thành công!`
-        : `Đã tạm khóa tài khoản "${name}"!`,
-      currentBlocked ? 'success' : 'warning'
-    )
   }
 
   // Filter
@@ -102,7 +113,7 @@ export const AdminCustomersPage: React.FC = () => {
 
     let matchesStatus = true
     if (statusFilter === 'active') matchesStatus = !c.isBlocked
-    if (statusFilter === 'blocked') matchesStatus = !!c.isBlocked
+    if (statusFilter === 'blocked') matchesStatus = Boolean(c.isBlocked)
 
     return matchesQuery && matchesStatus
   })
@@ -150,7 +161,7 @@ export const AdminCustomersPage: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value as any)
+              setStatusFilter(e.target.value as 'all' | 'active' | 'blocked')
               setCurrentPage(1)
             }}
             className="bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer"
@@ -251,7 +262,7 @@ export const AdminCustomersPage: React.FC = () => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleToggleBlock(cust.id, cust.name, !!cust.isBlocked)}
+                          onClick={() => handleToggleBlock(cust.id, cust.name, Boolean(cust.isBlocked))}
                           className={`p-1.5 rounded-lg transition-colors ${
                             cust.isBlocked
                               ? 'text-emerald-600 hover:bg-emerald-50'
@@ -357,7 +368,7 @@ export const AdminCustomersPage: React.FC = () => {
                   handleToggleBlock(
                     selectedCustomer.id,
                     selectedCustomer.name,
-                    !!selectedCustomer.isBlocked
+                    Boolean(selectedCustomer.isBlocked)
                   )
                 }
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors ${

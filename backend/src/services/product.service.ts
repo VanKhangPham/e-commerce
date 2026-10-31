@@ -74,7 +74,7 @@ export class ProductService {
     }
 
     // Sort options
-    let orderBy: Prisma.ProductOrderByWithRelationInput = { createdAt: 'desc' };
+    let orderBy: Prisma.ProductOrderByWithRelationInput;
     switch (query.sort) {
       case 'price-asc':
       case 'price_asc':

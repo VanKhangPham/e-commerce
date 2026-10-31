@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,6 +13,8 @@ import {
   ExternalLink,
   Terminal,
   Activity,
+  User,
+  Shield,
 } from 'lucide-react'
 import { useAuthStore, useToastStore } from '@/store'
 import { loginSchema, type LoginFormData } from '@/utils'
@@ -20,7 +22,7 @@ import { loginSchema, type LoginFormData } from '@/utils'
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, loginDemo, isLoading } = useAuthStore()
+  const { login, loginDemo, isLoading, isAuthenticated, role } = useAuthStore()
   const { showToast } = useToastStore()
 
   const [showPassword, setShowPassword] = useState(false)
@@ -28,6 +30,17 @@ export const AdminLoginPage: React.FC = () => {
 
   // Redirect destination after login
   const fromLocation = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/admin/dashboard'
+
+  // Auto redirect if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (role === 'admin') {
+        navigate('/admin/dashboard', { replace: true })
+      } else {
+        navigate('/', { replace: true })
+      }
+    }
+  }, [isAuthenticated, role, navigate])
 
   const {
     register,
@@ -42,12 +55,21 @@ export const AdminLoginPage: React.FC = () => {
     },
   })
 
+  const handleRoleRedirect = (userRole: string) => {
+    if (userRole === 'admin') {
+      showToast('Xác thực quản trị viên thành công! Chào mừng tới Bảng Điều Khiển.', 'success')
+      navigate(fromLocation || '/admin/dashboard', { replace: true })
+    } else {
+      showToast('Tài khoản của bạn là Khách hàng (không có quyền Quản trị). Đang chuyển hướng về trang mua sắm...', 'info')
+      navigate('/', { replace: true })
+    }
+  }
+
   const onSubmit = async (data: LoginFormData) => {
     setErrorMessage(null)
     try {
-      await login(data.email, data.password, 'admin')
-      showToast('Xác thực quản trị viên thành công! Chào mừng tới Bảng Điều Khiển.', 'success')
-      navigate(fromLocation, { replace: true })
+      const user = await login(data.email, data.password)
+      handleRoleRedirect(user.role)
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Đăng nhập quản trị viên thất bại'
       setErrorMessage(errorMsg)
@@ -60,11 +82,23 @@ export const AdminLoginPage: React.FC = () => {
     try {
       setValue('email', 'admin@nova.vn')
       setValue('password', 'admin123')
-      await loginDemo('admin')
-      showToast('Đăng nhập thành công với tài khoản Quản Trị Viên (admin@nova.vn)!', 'success')
-      navigate(fromLocation, { replace: true })
+      const user = await loginDemo('admin')
+      handleRoleRedirect(user.role)
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Đăng nhập demo admin thất bại'
+      setErrorMessage(errorMsg)
+    }
+  }
+
+  const handleQuickDemoCustomerLogin = async () => {
+    setErrorMessage(null)
+    try {
+      setValue('email', 'user@nova.vn')
+      setValue('password', 'user123')
+      const user = await loginDemo('user')
+      handleRoleRedirect(user.role)
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Đăng nhập demo khách hàng thất bại'
       setErrorMessage(errorMsg)
     }
   }
@@ -92,13 +126,22 @@ export const AdminLoginPage: React.FC = () => {
           </div>
         </div>
 
-        <Link
-          to="/"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
-        >
-          <span>Về Website Bán Hàng</span>
-          <ExternalLink className="w-3.5 h-3.5" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/dang-nhap"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Cổng Khách Hàng</span>
+          </Link>
+          <Link
+            to="/"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-xs font-semibold text-indigo-300 hover:text-white hover:bg-indigo-600 transition-colors"
+          >
+            <span>Về Website Bán Hàng</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Link>
+        </div>
       </header>
 
       {/* Main Login Card */}
@@ -117,29 +160,53 @@ export const AdminLoginPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick Demo Admin Button */}
-          <div className="p-4 bg-slate-950/80 border border-indigo-900/50 rounded-2xl space-y-2.5">
+          {/* Quick Demo Accounts Banner */}
+          <div className="p-4 bg-slate-950/80 border border-indigo-900/50 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
                 <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Tài Khoản Admin Mẫu (Demo)</span>
+                <span>Thử Nghiệm Phân Quyền (Demo 1-Click)</span>
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700 font-bold">
-                1-Click Sẵn Sàng
+                Tự chuyển hướng
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Email: <code className="text-white font-bold bg-slate-900 px-1 rounded">admin@nova.vn</code> | Pass: <code className="text-white font-bold bg-slate-900 px-1 rounded">admin123</code>
-            </p>
-            <button
-              type="button"
-              onClick={handleQuickDemoAdminLogin}
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-[0.98]"
-            >
-              <Zap className="w-3.5 h-3.5 fill-white" />
-              <span>Đăng nhập nhanh với quyền Admin</span>
-            </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleQuickDemoAdminLogin}
+                disabled={isLoading}
+                className="flex flex-col items-start p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-left transition-all shadow-md group"
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs mb-0.5">
+                  <Shield className="w-3.5 h-3.5 text-white" />
+                  <span>Admin (Bảng Quản Trị)</span>
+                </div>
+                <div className="text-[10px] text-indigo-200">admin@nova.vn</div>
+                <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-white">
+                  <Zap className="w-3 h-3 fill-white" />
+                  <span>Vào Bảng Điều Khiển &rarr;</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickDemoCustomerLogin}
+                disabled={isLoading}
+                className="flex flex-col items-start p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-left border border-slate-700 transition-all group"
+              >
+                <div className="flex items-center gap-1.5 font-bold text-xs text-slate-200 mb-0.5">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>User (Giao Diện Khách)</span>
+                </div>
+                <div className="text-[10px] text-slate-400">user@nova.vn</div>
+                <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                  <Zap className="w-3 h-3 fill-emerald-400" />
+                  <span>Chuyển về Shop &rarr;</span>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Error Message */}
@@ -152,7 +219,7 @@ export const AdminLoginPage: React.FC = () => {
           {/* Admin Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 block">Email Quản Trị *</label>
+              <label className="text-xs font-bold text-slate-300 block">Email Đăng Nhập *</label>
               <div className="relative">
                 <input
                   type="email"
@@ -168,7 +235,7 @@ export const AdminLoginPage: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 block">Mật Khẩu Quản Trị *</label>
+              <label className="text-xs font-bold text-slate-300 block">Mật Khẩu *</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -204,7 +271,7 @@ export const AdminLoginPage: React.FC = () => {
           <div className="pt-4 border-t border-slate-800 text-center space-y-1 text-[11px] text-slate-500">
             <p className="flex items-center justify-center gap-1.5 text-slate-400">
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Hệ thống ghi nhận nhật ký truy cập IP theo quy định an toàn thông tin.</span>
+              <span>Hệ thống phân quyền tự động điều hướng người dùng đúng vai trò.</span>
             </p>
           </div>
         </div>
@@ -212,7 +279,7 @@ export const AdminLoginPage: React.FC = () => {
 
       {/* Footer */}
       <footer className="max-w-7xl mx-auto w-full text-center text-[11px] text-slate-600 z-10 py-2">
-        © 2026 NOVA Commerce Portal Management. Mọi quyền truy cập trái phép đều bị xử lý theo quy định pháp luật.
+        © 2026 NOVA Commerce Portal Management. Mọi quyền truy cập đều được kiểm soát phân quyền chặt chẽ.
       </footer>
     </div>
   )

@@ -31,7 +31,7 @@ export class CouponService {
       );
     }
 
-    let discountAmount = 0;
+    let discountAmount: number;
     if (coupon.discountType === CouponType.PERCENTAGE) {
       discountAmount = Math.round((cartTotal * coupon.discountValue) / 100);
       if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
@@ -54,6 +54,7 @@ export class CouponService {
       minOrderValue: coupon.minOrderValue,
       maxDiscount: coupon.maxDiscount,
       expiryDate: coupon.expiryDate,
+      usageLimit: coupon.usageLimit,
     };
   }
 }

@@ -1,137 +1,173 @@
-import { mockUsers, type MockUserRecord } from '@/data'
 import type { UserProfile, UserRole } from '@/types'
-import { fakeDelay, getStoredData, setStoredData } from './apiHelper'
+import { api, HttpError } from './httpClient'
 
-const STORAGE_KEY_USERS = 'nova_users_accounts'
-
-function loadUsers(): MockUserRecord[] {
-  return getStoredData<MockUserRecord[]>(STORAGE_KEY_USERS, mockUsers)
+interface BackendUser {
+  id: string
+  name: string
+  email: string
+  phone?: string | null
+  avatar?: string | null
+  role: string
+  isBlocked?: boolean
+  orderCount?: number
+  totalSpent?: number
+  addresses?: Array<{
+    id: string
+    fullName: string
+    phone: string
+    province: string
+    district: string
+    ward: string
+    addressDetail: string
+    isDefault: boolean
+  }>
+  createdAt: string
 }
 
-function saveUsers(users: MockUserRecord[]): void {
-  setStoredData(STORAGE_KEY_USERS, users)
+interface AuthResponse {
+  user: BackendUser
+  accessToken: string
+  refreshToken: string
+}
+
+function formatUserProfile(u: BackendUser): UserProfile {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    phone: u.phone || '',
+    avatar: u.avatar || undefined,
+    role: (u.role?.toLowerCase() === 'admin' ? 'admin' : 'user') as UserRole,
+    isBlocked: Boolean(u.isBlocked),
+    orderCount: u.orderCount ?? 0,
+    totalSpent: u.totalSpent ?? 0,
+    addresses: (u.addresses || []).map((a) => ({
+      id: a.id,
+      fullName: a.fullName,
+      phone: a.phone,
+      province: a.province,
+      district: a.district,
+      ward: a.ward,
+      addressDetail: a.addressDetail,
+      isDefault: Boolean(a.isDefault),
+    })),
+    createdAt: u.createdAt || new Date().toISOString(),
+  }
 }
 
 export const authService = {
+  /**
+   * Log in user or admin
+   */
   async login(
     email: string,
     pass: string,
     expectedRole?: UserRole
-  ): Promise<{ user: UserProfile; token: string }> {
-    await fakeDelay(400)
-    const list = loadUsers()
-    const cleanEmail = email.trim().toLowerCase()
+  ): Promise<{ user: UserProfile; token: string; refreshToken: string }> {
+    const isAdmin = expectedRole === 'admin'
+    const endpoint = isAdmin ? '/admin/auth/login' : '/auth/login'
 
-    const found = list.find((u) => u.email.toLowerCase() === cleanEmail)
-    if (!found) {
-      throw new Error('Email hoặc mật khẩu không chính xác.')
+    const res = await api.post<AuthResponse>(endpoint, {
+      email: email.trim().toLowerCase(),
+      password: pass,
+    })
+
+    const user = formatUserProfile(res.data.user)
+    return {
+      user,
+      token: res.data.accessToken,
+      refreshToken: res.data.refreshToken,
     }
-
-    if (found.passwordHash !== pass) {
-      throw new Error('Email hoặc mật khẩu không chính xác.')
-    }
-
-    if (expectedRole && found.role !== expectedRole) {
-      if (expectedRole === 'admin') {
-        throw new Error('Tài khoản này không có quyền truy cập khu vực Quản trị.')
-      } else {
-        throw new Error('Tài khoản không phù hợp với phân hệ khách hàng.')
-      }
-    }
-
-    // Strip passwordHash before returning
-    const { passwordHash: _, ...userProfile } = found
-    const token = `mock-jwt-token-${userProfile.id}-${Date.now()}`
-
-    return { user: userProfile, token }
   },
 
+  /**
+   * Register customer account
+   */
   async register(data: {
     name: string
     email: string
     password: string
     phone: string
-  }): Promise<{ user: UserProfile; token: string }> {
-    await fakeDelay(500)
-    const list = loadUsers()
-    const cleanEmail = data.email.trim().toLowerCase()
-
-    const exists = list.some((u) => u.email.toLowerCase() === cleanEmail)
-    if (exists) {
-      throw new Error('Email này đã được sử dụng để đăng ký tài khoản.')
-    }
-
-    const newUser: MockUserRecord = {
-      id: `usr-customer-${Date.now()}`,
+  }): Promise<{ user: UserProfile; token: string; refreshToken: string }> {
+    const res = await api.post<AuthResponse>('/auth/register', {
       name: data.name.trim(),
-      email: cleanEmail,
-      passwordHash: data.password,
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
       phone: data.phone.trim(),
-      role: 'user',
-      addresses: [],
-      createdAt: new Date().toISOString(),
+    })
+
+    const user = formatUserProfile(res.data.user)
+    return {
+      user,
+      token: res.data.accessToken,
+      refreshToken: res.data.refreshToken,
     }
-
-    list.push(newUser)
-    saveUsers(list)
-
-    const { passwordHash: _, ...userProfile } = newUser
-    const token = `mock-jwt-token-${userProfile.id}-${Date.now()}`
-
-    return { user: userProfile, token }
   },
 
+  /**
+   * Request password reset link
+   */
   async forgotPassword(email: string): Promise<boolean> {
-    await fakeDelay(400)
-    const list = loadUsers()
-    const cleanEmail = email.trim().toLowerCase()
-    const found = list.some((u) => u.email.toLowerCase() === cleanEmail)
-    if (!found) {
-      throw new Error('Email không tồn tại trên hệ thống NOVA.')
-    }
+    await api.post('/auth/forgot-password', {
+      email: email.trim().toLowerCase(),
+    })
     return true
   },
 
-  async changePassword(userId: string, oldPass: string, newPass: string): Promise<boolean> {
-    await fakeDelay(400)
-    const list = loadUsers()
-    const index = list.findIndex((u) => u.id === userId)
-    if (index === -1) {
-      throw new Error('Tài khoản không tồn tại.')
-    }
-
-    if (list[index].passwordHash !== oldPass) {
-      throw new Error('Mật khẩu hiện tại không đúng.')
-    }
-
-    list[index].passwordHash = newPass
-    saveUsers(list)
+  /**
+   * Change current user's password
+   */
+  async changePassword(_userId: string, oldPass: string, newPass: string): Promise<boolean> {
+    await api.put('/user/change-password', {
+      currentPassword: oldPass,
+      newPassword: newPass,
+    })
     return true
   },
 
+  /**
+   * Get all registered customers for administration
+   */
   async getUsers(): Promise<UserProfile[]> {
-    await fakeDelay(250)
-    const list = loadUsers()
-    return list.map(({ passwordHash: _, ...profile }) => profile)
+    try {
+      const res = await api.get<BackendUser[]>('/admin/customers?limit=100')
+      return res.data.map(formatUserProfile)
+    } catch (err) {
+      if (err instanceof HttpError && err.statusCode === 403) {
+        return []
+      }
+      throw err
+    }
   },
 
-  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    await fakeDelay(350)
-    const list = loadUsers()
-    const index = list.findIndex((u) => u.id === userId)
-    if (index === -1) {
-      throw new Error('Không tìm thấy thông tin người dùng.')
+  /**
+   * Toggle block/unblock a customer account
+   */
+  async toggleBlockCustomer(id: string): Promise<{ isBlocked: boolean; message: string }> {
+    const res = await api.patch<{ isBlocked: boolean }>(`/admin/customers/${id}/toggle-block`)
+    return {
+      isBlocked: res.data.isBlocked,
+      message: res.message || 'Thành công',
     }
+  },
 
-    const updated = {
-      ...list[index],
-      ...updates,
-    }
+  /**
+   * Fetch current user profile from server
+   */
+  async getProfile(): Promise<UserProfile> {
+    const res = await api.get<BackendUser>('/user/profile')
+    return formatUserProfile(res.data)
+  },
 
-    list[index] = updated
-    saveUsers(list)
-
-    const { passwordHash: _, ...profile } = updated
-    return profile
+  /**
+   * Update current user profile
+   */
+  async updateProfile(_userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
+    const res = await api.put<BackendUser>('/user/profile', {
+      name: updates.name,
+      phone: updates.phone,
+      avatar: updates.avatar,
+    })
+    return formatUserProfile(res.data)
   },
 }

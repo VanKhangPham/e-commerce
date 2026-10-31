@@ -343,7 +343,7 @@ export const AdminCouponsPage: React.FC = () => {
                   <label className="font-bold text-slate-700 block">Loại chiết khấu *</label>
                   <select
                     value={discountType}
-                    onChange={(e) => setDiscountType(e.target.value as any)}
+                    onChange={(e) => setDiscountType(e.target.value as 'percentage' | 'fixed')}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 font-semibold"
                   >
                     <option value="percentage">Theo phần trăm (%)</option>

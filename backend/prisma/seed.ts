@@ -93,7 +93,7 @@ async function main() {
     },
   });
 
-  const adminUser = await prisma.user.create({
+  await prisma.user.create({
     data: {
       id: 'usr-admin-1',
       name: 'Quản Trị Viên NOVA',
@@ -911,7 +911,7 @@ async function main() {
   console.log('✓ Đã tạo 5 mã giảm giá (coupons)');
 
   // 7. Create Sample Orders
-  const order1 = await prisma.order.create({
+  await prisma.order.create({
     data: {
       id: 'ord-1001',
       orderNumber: 'NOVA-20260901-8841',
@@ -975,7 +975,7 @@ async function main() {
     },
   });
 
-  const order2 = await prisma.order.create({
+  await prisma.order.create({
     data: {
       id: 'ord-1002',
       orderNumber: 'NOVA-20260915-9923',
@@ -1027,7 +1027,7 @@ async function main() {
     },
   });
 
-  const order3 = await prisma.order.create({
+  await prisma.order.create({
     data: {
       id: 'ord-1003',
       orderNumber: 'NOVA-20260920-1122',

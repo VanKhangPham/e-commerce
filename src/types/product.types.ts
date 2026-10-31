@@ -5,7 +5,7 @@ export interface ProductVariant {
   value: string
   priceModifier: number
   inStock: boolean
-  sku: string
+  sku?: string
 }
 
 export interface ProductSpecification {
@@ -58,8 +58,8 @@ export interface Category {
   id: string
   name: string
   slug: string
-  description: string
-  image: string
+  description?: string
+  image?: string
   iconName?: string
   productCount: number
 }

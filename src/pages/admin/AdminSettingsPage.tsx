@@ -6,6 +6,7 @@ import {
   Save,
 } from 'lucide-react'
 import { useToastStore } from '@/store'
+import { adminService } from '@/services'
 
 interface StoreSettings {
   storeName: string
@@ -48,24 +49,31 @@ export const AdminSettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('nova_store_settings')
-    if (saved) {
+    const loadSettings = async () => {
       try {
-        setSettings(JSON.parse(saved))
+        const data = await adminService.getSettings()
+        if (data) {
+          setSettings((prev) => ({ ...prev, ...data }))
+        }
       } catch (err) {
-        console.error('Failed to parse settings:', err)
+        console.error('Failed to load settings:', err)
       }
     }
+    loadSettings()
   }, [])
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
-    setTimeout(() => {
+    try {
+      await adminService.updateSettings(settings)
       localStorage.setItem('nova_store_settings', JSON.stringify(settings))
-      setIsSaving(false)
       showToast('Đã lưu cấu hình hệ thống thành công!', 'success')
-    }, 400)
+    } catch {
+      showToast('Không thể lưu cấu hình hệ thống, vui lòng thử lại', 'error')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (

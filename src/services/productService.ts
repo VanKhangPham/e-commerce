@@ -1,229 +1,348 @@
-import { mockProducts, mockCategories } from '@/data'
 import type { Category, FilterParams, PaginatedResult, Product } from '@/types'
-import { fakeDelay, getStoredData, setStoredData } from './apiHelper'
+import { api, HttpError } from './httpClient'
 
-const STORAGE_KEY_PRODUCTS = 'nova_products_data'
-const STORAGE_KEY_CATEGORIES = 'nova_categories_data'
-
-function loadProducts(): Product[] {
-  return getStoredData<Product[]>(STORAGE_KEY_PRODUCTS, mockProducts)
+interface BackendProductRaw {
+  id: string
+  name: string
+  slug: string
+  price: number
+  originalPrice: number
+  discountPercentage: number
+  rating: number
+  reviewCount: number
+  stock: number
+  soldCount: number
+  images: Array<string | { url: string }>
+  thumbnail: string
+  categoryId: string
+  categoryName?: string
+  category?: { id: string; name: string; slug: string }
+  brand: string
+  shortDescription: string
+  description: string
+  specifications?: Array<{ name: string; value: string }>
+  variants?: Array<{
+    id: string
+    name: string
+    type: string
+    value: string
+    priceModifier: number
+    inStock: boolean
+    sku?: string | null
+  }>
+  isFeatured?: boolean
+  isBestSeller?: boolean
+  isFlashSale?: boolean
+  flashSaleEndsAt?: string | null
+  tags?: string[]
+  createdAt: string
 }
 
-function saveProducts(products: Product[]): void {
-  setStoredData(STORAGE_KEY_PRODUCTS, products)
+function formatProduct(p: BackendProductRaw): Product {
+  const normalizedImages: string[] = (p.images || []).map((img) =>
+    typeof img === 'string' ? img : img.url
+  )
+
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    price: p.price,
+    originalPrice: p.originalPrice || p.price,
+    discountPercentage: p.discountPercentage || 0,
+    rating: p.rating || 5,
+    reviewCount: p.reviewCount || 0,
+    stock: p.stock || 0,
+    soldCount: p.soldCount || 0,
+    images: normalizedImages.length > 0 ? normalizedImages : [p.thumbnail],
+    thumbnail: p.thumbnail,
+    categoryId: p.categoryId,
+    categoryName: p.categoryName || p.category?.name || 'Khác',
+    brand: p.brand || 'NOVA',
+    shortDescription: p.shortDescription || '',
+    description: p.description || '',
+    specifications: (p.specifications || []).map((s) => ({
+      name: s.name,
+      value: s.value,
+    })),
+    variants: (p.variants || []).map((v) => ({
+      id: v.id,
+      name: v.name,
+      type: v.type.toLowerCase() as 'color' | 'size' | 'version',
+      value: v.value,
+      priceModifier: v.priceModifier || 0,
+      inStock: Boolean(v.inStock),
+      sku: v.sku || undefined,
+    })),
+    isFeatured: Boolean(p.isFeatured),
+    isBestSeller: Boolean(p.isBestSeller),
+    isFlashSale: Boolean(p.isFlashSale),
+    flashSaleEndsAt: p.flashSaleEndsAt || undefined,
+    tags: p.tags || [],
+    createdAt: p.createdAt || new Date().toISOString(),
+  }
 }
 
-function loadCategories(): Category[] {
-  return getStoredData<Category[]>(STORAGE_KEY_CATEGORIES, mockCategories)
+interface BackendCategoryRaw {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  image?: string | null
+  iconName?: string | null
+  productCount?: number
+  _count?: { products: number }
 }
 
-function saveCategories(categories: Category[]): void {
-  setStoredData(STORAGE_KEY_CATEGORIES, categories)
+function formatCategory(c: BackendCategoryRaw): Category {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    description: c.description || undefined,
+    image: c.image || undefined,
+    iconName: c.iconName || 'Smartphone',
+    productCount: c.productCount ?? c._count?.products ?? 0,
+  }
 }
 
 export const productService = {
+  /**
+   * Fetch paginated products with search, filter, and sorting
+   */
   async getProducts(params?: FilterParams): Promise<PaginatedResult<Product>> {
-    await fakeDelay(300)
-    let list = loadProducts()
+    const q = new URLSearchParams()
 
-    if (params?.search) {
-      const q = params.search.toLowerCase().trim()
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.brand.toLowerCase().includes(q) ||
-          p.shortDescription.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q))
-      )
-    }
+    if (params?.page) q.set('page', String(params.page))
+    if (params?.limit) q.set('limit', String(params.limit))
+    if (params?.search) q.set('search', params.search)
+    if (params?.categoryId) q.set('categoryId', params.categoryId)
+    if (params?.categorySlug) q.set('category', params.categorySlug)
+    if (params?.brand) q.set('brand', params.brand)
+    if (params?.minPrice !== undefined) q.set('minPrice', String(params.minPrice))
+    if (params?.maxPrice !== undefined) q.set('maxPrice', String(params.maxPrice))
+    if (params?.rating !== undefined) q.set('rating', String(params.rating))
 
-    if (params?.categorySlug) {
-      const cats = loadCategories()
-      const targetCat = cats.find((c) => c.slug === params.categorySlug)
-      if (targetCat) {
-        list = list.filter((p) => p.categoryId === targetCat.id)
+    // Sort mapping
+    if (params?.sortBy) {
+      const sortMap: Record<string, string> = {
+        'price-asc': 'price-asc',
+        'price-desc': 'price-desc',
+        'rating-desc': 'rating',
+        popularity: 'popular',
+        newest: 'newest',
       }
+      q.set('sort', sortMap[params.sortBy] || 'newest')
     }
 
-    if (params?.categoryId) {
-      list = list.filter((p) => p.categoryId === params.categoryId)
-    }
+    const endpoint = `/products?${q.toString()}`
+    const res = await api.get<BackendProductRaw[]>(endpoint)
 
-    if (params?.brand) {
-      list = list.filter((p) => p.brand.toLowerCase() === params.brand?.toLowerCase())
-    }
-
-    if (params?.minPrice !== undefined) {
-      list = list.filter((p) => p.price >= (params.minPrice ?? 0))
-    }
-
-    if (params?.maxPrice !== undefined) {
-      list = list.filter((p) => p.price <= (params.maxPrice ?? Infinity))
-    }
-
-    if (params?.rating !== undefined) {
-      list = list.filter((p) => p.rating >= (params.rating ?? 0))
-    }
-
-    if (params?.inStockOnly) {
-      list = list.filter((p) => p.stock > 0)
-    }
-
-    // Sorting
-    switch (params?.sortBy) {
-      case 'price-asc':
-        list.sort((a, b) => a.price - b.price)
-        break
-      case 'price-desc':
-        list.sort((a, b) => b.price - a.price)
-        break
-      case 'rating-desc':
-        list.sort((a, b) => b.rating - a.rating)
-        break
-      case 'popularity':
-        list.sort((a, b) => b.soldCount - a.soldCount)
-        break
-      case 'newest':
-      default:
-        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        break
-    }
-
-    const page = params?.page || 1
-    const limit = params?.limit || 12
-    const totalItems = list.length
-    const totalPages = Math.ceil(totalItems / limit)
-    const startIndex = (page - 1) * limit
-    const items = list.slice(startIndex, startIndex + limit)
+    const items = (res.data || []).map(formatProduct)
+    const pagination = res.pagination
 
     return {
       items,
-      totalItems,
-      totalPages,
-      currentPage: page,
-      limit,
+      totalItems: pagination?.total || items.length,
+      totalPages: pagination?.totalPages || 1,
+      currentPage: pagination?.page || 1,
+      limit: pagination?.limit || params?.limit || 12,
     }
   },
 
+  /**
+   * Get single product by slug
+   */
   async getProductBySlug(slug: string): Promise<Product | null> {
-    await fakeDelay(250)
-    const list = loadProducts()
-    return list.find((p) => p.slug === slug) || null
+    try {
+      const res = await api.get<BackendProductRaw>(`/products/slug/${slug}`)
+      return formatProduct(res.data)
+    } catch (err: unknown) {
+      if (err instanceof HttpError && err.statusCode === 404) {
+        return null
+      }
+      throw err
+    }
   },
 
+  /**
+   * Get single product by ID
+   */
   async getProductById(id: string): Promise<Product | null> {
-    await fakeDelay(200)
-    const list = loadProducts()
-    return list.find((p) => p.id === id) || null
+    try {
+      const res = await api.get<BackendProductRaw>(`/products/${id}`)
+      return formatProduct(res.data)
+    } catch (err: unknown) {
+      if (err instanceof HttpError && err.statusCode === 404) {
+        return null
+      }
+      throw err
+    }
   },
 
+  /**
+   * Get featured products for homepage
+   */
   async getFeaturedProducts(): Promise<Product[]> {
-    await fakeDelay(200)
-    const list = loadProducts()
-    return list.filter((p) => p.isFeatured).slice(0, 8)
+    const res = await api.get<BackendProductRaw[]>('/products?isFeatured=true&limit=8')
+    return (res.data || []).map(formatProduct)
   },
 
+  /**
+   * Get best seller products for homepage
+   */
   async getBestSellerProducts(): Promise<Product[]> {
-    await fakeDelay(200)
-    const list = loadProducts()
-    return list.filter((p) => p.isBestSeller).slice(0, 8)
+    const res = await api.get<BackendProductRaw[]>('/products?sort=popular&limit=8')
+    return (res.data || []).map(formatProduct)
   },
 
+  /**
+   * Get flash sale products
+   */
   async getFlashSaleProducts(): Promise<Product[]> {
-    await fakeDelay(200)
-    const list = loadProducts()
-    return list.filter((p) => p.isFlashSale).slice(0, 6)
+    const res = await api.get<BackendProductRaw[]>('/products?isFlashSale=true&limit=6')
+    return (res.data || []).map(formatProduct)
   },
 
-  async getRelatedProducts(productId: string, categoryId: string, limit = 4): Promise<Product[]> {
-    await fakeDelay(200)
-    const list = loadProducts()
-    return list
-      .filter((p) => p.id !== productId && p.categoryId === categoryId)
-      .slice(0, limit)
+  /**
+   * Get related products
+   */
+  async getRelatedProducts(productId: string, _categoryId?: string, limit = 4): Promise<Product[]> {
+    try {
+      const res = await api.get<BackendProductRaw[]>(`/products/${productId}/related?limit=${limit}`)
+      return (res.data || []).map(formatProduct)
+    } catch {
+      return []
+    }
   },
 
+  /**
+   * Get all product categories
+   */
   async getCategories(): Promise<Category[]> {
-    await fakeDelay(150)
-    const categories = loadCategories()
-    const products = loadProducts()
-    // dynamically compute productCount
-    return categories.map((cat) => ({
-      ...cat,
-      productCount: products.filter((p) => p.categoryId === cat.id).length,
-    }))
+    const res = await api.get<BackendCategoryRaw[]>('/categories')
+    return (res.data || []).map(formatCategory)
   },
 
+  /**
+   * Get category by slug
+   */
   async getCategoryBySlug(slug: string): Promise<Category | null> {
-    await fakeDelay(150)
-    const categories = await this.getCategories()
-    return categories.find((c) => c.slug === slug) || null
+    try {
+      const res = await api.get<BackendCategoryRaw>(`/categories/${slug}`)
+      return formatCategory(res.data)
+    } catch (err: unknown) {
+      if (err instanceof HttpError && err.statusCode === 404) {
+        return null
+      }
+      throw err
+    }
   },
 
-  // Admin CRUD for Products
+  // --- Admin CRUD Operations ---
+
+  /**
+   * Admin: Create new product
+   */
   async createProduct(productData: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
-    await fakeDelay(400)
-    const list = loadProducts()
-    const newProduct: Product = {
-      ...productData,
-      id: `prod-${Date.now()}`,
-      createdAt: new Date().toISOString(),
+    const payload = {
+      name: productData.name,
+      slug: productData.slug,
+      price: productData.price,
+      originalPrice: productData.originalPrice,
+      categoryId: productData.categoryId,
+      brand: productData.brand,
+      shortDescription: productData.shortDescription,
+      description: productData.description,
+      stock: productData.stock,
+      thumbnail: productData.thumbnail || productData.images[0],
+      isFeatured: Boolean(productData.isFeatured),
+      isBestSeller: Boolean(productData.isBestSeller),
+      isFlashSale: Boolean(productData.isFlashSale),
+      tags: productData.tags || [],
+      images: (productData.images || []).map((url, idx) => ({
+        url,
+        order: idx,
+        isPrimary: idx === 0,
+      })),
+      variants: (productData.variants || []).map((v) => ({
+        name: v.name,
+        type: (v.type?.toUpperCase() === 'SIZE' || v.type?.toUpperCase() === 'VERSION' ? v.type.toUpperCase() : 'COLOR'),
+        value: v.value,
+        priceModifier: v.priceModifier || 0,
+        inStock: v.inStock ?? true,
+        sku: v.sku || null,
+      })),
+      specifications: productData.specifications || [],
     }
-    list.unshift(newProduct)
-    saveProducts(list)
-    return newProduct
+
+    const res = await api.post<BackendProductRaw>('/admin/products', payload)
+    return formatProduct(res.data)
   },
 
+  /**
+   * Admin: Update product
+   */
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
-    await fakeDelay(400)
-    const list = loadProducts()
-    const index = list.findIndex((p) => p.id === id)
-    if (index === -1) {
-      throw new Error('Sản phẩm không tồn tại')
+    const payload: Record<string, unknown> = { ...updates }
+
+    if (updates.images) {
+      payload.images = updates.images.map((url, idx) => ({
+        url,
+        order: idx,
+        isPrimary: idx === 0,
+      }))
     }
-    list[index] = { ...list[index], ...updates }
-    saveProducts(list)
-    return list[index]
+
+    if (updates.variants) {
+      payload.variants = updates.variants.map((v) => ({
+        name: v.name,
+        type: (v.type?.toUpperCase() === 'SIZE' || v.type?.toUpperCase() === 'VERSION' ? v.type.toUpperCase() : 'COLOR'),
+        value: v.value,
+        priceModifier: v.priceModifier || 0,
+        inStock: v.inStock ?? true,
+        sku: v.sku || null,
+      }))
+    }
+
+    const res = await api.put<BackendProductRaw>(`/admin/products/${id}`, payload)
+    return formatProduct(res.data)
   },
 
+  /**
+   * Admin: Delete product
+   */
   async deleteProduct(id: string): Promise<boolean> {
-    await fakeDelay(300)
-    const list = loadProducts()
-    const filtered = list.filter((p) => p.id !== id)
-    saveProducts(filtered)
+    await api.delete(`/admin/products/${id}`)
     return true
   },
 
-  // Admin CRUD for Categories
+  /**
+   * Admin: Create category
+   */
   async createCategory(categoryData: Omit<Category, 'id'>): Promise<Category> {
-    await fakeDelay(300)
-    const list = loadCategories()
-    const newCat: Category = {
-      ...categoryData,
-      id: `cat-${Date.now()}`,
-    }
-    list.push(newCat)
-    saveCategories(list)
-    return newCat
+    const res = await api.post<BackendCategoryRaw>('/admin/categories', {
+      name: categoryData.name,
+      slug: categoryData.slug,
+      description: categoryData.description || null,
+      image: categoryData.image || null,
+    })
+    return formatCategory(res.data)
   },
 
+  /**
+   * Admin: Update category
+   */
   async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
-    await fakeDelay(300)
-    const list = loadCategories()
-    const index = list.findIndex((c) => c.id === id)
-    if (index === -1) {
-      throw new Error('Danh mục không tồn tại')
-    }
-    list[index] = { ...list[index], ...updates }
-    saveCategories(list)
-    return list[index]
+    const res = await api.put<BackendCategoryRaw>(`/admin/categories/${id}`, updates)
+    return formatCategory(res.data)
   },
 
+  /**
+   * Admin: Delete category
+   */
   async deleteCategory(id: string): Promise<boolean> {
-    await fakeDelay(300)
-    const list = loadCategories()
-    const filtered = list.filter((c) => c.id !== id)
-    saveCategories(filtered)
+    await api.delete(`/admin/categories/${id}`)
     return true
   },
 }

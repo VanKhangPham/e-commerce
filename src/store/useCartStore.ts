@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { CartItem, CartSummary, Coupon, Product, ProductVariant } from '@/types'
+import { cartService, type BackendCartResponse } from '@/services'
+import { useAuthStore } from './useAuthStore'
 
 const STORAGE_KEY_CART = 'nova_cart_items'
 const STORAGE_KEY_COUPON = 'nova_applied_coupon'
@@ -8,6 +10,7 @@ interface CartState {
   items: CartItem[]
   appliedCoupon: Coupon | null
   isCartDrawerOpen: boolean
+  isLoading: boolean
 
   // Actions
   addItem: (product: Product, variant?: ProductVariant, quantity?: number) => void
@@ -20,35 +23,14 @@ interface CartState {
   closeCartDrawer: () => void
   getSummary: () => CartSummary
   getItemCount: () => number
+  syncWithBackend: () => Promise<void>
 }
 
 function loadInitialCart(): CartItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CART)
     if (raw) return JSON.parse(raw)
-    // Sample pre-loaded cart item for instant testing
-    return [
-      {
-        id: 'cart-init-1',
-        productId: 'prod-5',
-        productName: 'Sony WH-1000XM5 Tai Nghe Chống Ồn Cao Cấp - Đen',
-        productSlug: 'sony-wh-1000xm5-chong-on',
-        image: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?q=80&w=600&auto=format&fit=crop',
-        price: 6990000,
-        originalPrice: 8490000,
-        quantity: 1,
-        selectedVariant: {
-          id: 'v-5-1',
-          name: 'Đen Huyền Bí',
-          type: 'color',
-          value: '#111827',
-          priceModifier: 0,
-          inStock: true,
-          sku: 'SONY-XM5-BLK',
-        },
-        stock: 45,
-      },
-    ]
+    return []
   } catch {
     return []
   }
@@ -83,10 +65,66 @@ function saveCouponToStorage(coupon: Coupon | null): void {
   }
 }
 
+function formatBackendCartItem(item: BackendCartResponse['items'][0]): CartItem {
+  return {
+    id: item.id,
+    productId: item.productId,
+    productName: item.product.name,
+    productSlug: item.product.slug,
+    image: item.product.thumbnail,
+    price: item.unitPrice,
+    originalPrice: item.product.originalPrice,
+    quantity: item.quantity,
+    selectedVariant: item.selectedVariant
+      ? {
+          id: item.selectedVariant.id,
+          name: item.selectedVariant.name,
+          type: item.selectedVariant.type.toLowerCase() as 'color' | 'size' | 'version',
+          value: item.selectedVariant.value,
+          priceModifier: item.selectedVariant.priceModifier,
+          inStock: true,
+          sku: '',
+        }
+      : undefined,
+    stock: item.product.stock,
+  }
+}
+
 export const useCartStore = create<CartState>((set, get) => ({
   items: loadInitialCart(),
   appliedCoupon: loadInitialCoupon(),
   isCartDrawerOpen: false,
+  isLoading: false,
+
+  syncWithBackend: async () => {
+    const isAuth = useAuthStore.getState().isAuthenticated
+    if (!isAuth) return
+
+    set({ isLoading: true })
+    try {
+      // 1. If we have local guest items, push them to backend
+      const localItems = get().items
+      if (localItems.length > 0) {
+        for (const it of localItems) {
+          try {
+            await cartService.addToCart(it.productId, it.selectedVariant?.id, it.quantity)
+          } catch {
+            // Ignore duplicate/conflict errors during batch push
+          }
+        }
+      }
+
+      // 2. Fetch authoritative cart from server
+      const serverCart = await cartService.getCart()
+      const formatted = serverCart.items.map(formatBackendCartItem)
+      saveCartToStorage(formatted)
+      set({ items: formatted })
+    } catch (err) {
+      console.warn('Failed to sync cart with backend:', err)
+    } finally {
+      set({ isLoading: false })
+    }
+  },
 
   addItem: (product: Product, variant?: ProductVariant, quantity = 1) => {
     const current = get().items
@@ -123,12 +161,27 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     saveCartToStorage(updated)
     set({ items: updated })
+
+    // Sync to backend if logged in
+    const isAuth = useAuthStore.getState().isAuthenticated
+    if (isAuth) {
+      cartService.addToCart(product.id, variant?.id, quantity).catch((e) => {
+        console.warn('Failed to add item to backend cart:', e)
+      })
+    }
   },
 
   removeItem: (itemId: string) => {
     const updated = get().items.filter((item) => item.id !== itemId)
     saveCartToStorage(updated)
     set({ items: updated })
+
+    const isAuth = useAuthStore.getState().isAuthenticated
+    if (isAuth) {
+      cartService.removeFromCart(itemId).catch((e) => {
+        console.warn('Failed to remove item from backend cart:', e)
+      })
+    }
   },
 
   updateQuantity: (itemId: string, quantity: number) => {
@@ -149,12 +202,26 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     saveCartToStorage(updated)
     set({ items: updated })
+
+    const isAuth = useAuthStore.getState().isAuthenticated
+    if (isAuth) {
+      cartService.updateQuantity(itemId, quantity).catch((e) => {
+        console.warn('Failed to update quantity in backend cart:', e)
+      })
+    }
   },
 
   clearCart: () => {
     saveCartToStorage([])
     saveCouponToStorage(null)
     set({ items: [], appliedCoupon: null })
+
+    const isAuth = useAuthStore.getState().isAuthenticated
+    if (isAuth) {
+      cartService.clearCart().catch((e) => {
+        console.warn('Failed to clear backend cart:', e)
+      })
+    }
   },
 
   applyCoupon: (coupon: Coupon) => {
@@ -175,7 +242,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
     // Base shipping fee: 30.000₫, free if subtotal >= 2.000.000₫ or cart empty
-    let shippingFee = items.length === 0 ? 0 : subtotal >= 2000000 ? 0 : 30000
+    const shippingFee = items.length === 0 ? 0 : subtotal >= 2000000 ? 0 : 30000
 
     let discountAmount = 0
     if (appliedCoupon && subtotal >= appliedCoupon.minOrderValue) {
@@ -191,20 +258,18 @@ export const useCartStore = create<CartState>((set, get) => ({
       }
     }
 
-    // Safety clamps
-    discountAmount = Math.min(discountAmount, subtotal + shippingFee)
-    const total = Math.max(0, subtotal + shippingFee - discountAmount)
+    const total = Math.max(0, subtotal - discountAmount + shippingFee)
 
     return {
       subtotal,
-      discountAmount,
       shippingFee,
+      discountAmount,
       total,
-      appliedCoupon,
+      appliedCoupon: appliedCoupon || undefined,
     }
   },
 
   getItemCount: (): number => {
-    return get().items.reduce((count, item) => count + item.quantity, 0)
+    return get().items.reduce((sum, item) => sum + item.quantity, 0)
   },
 }))

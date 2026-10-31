@@ -18,6 +18,9 @@ export interface UserProfile {
   phone: string
   avatar?: string
   role: UserRole
+  isBlocked?: boolean
+  orderCount?: number
+  totalSpent?: number
   addresses: SavedAddress[]
   createdAt: string
 }

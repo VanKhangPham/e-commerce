@@ -10,7 +10,7 @@ import {
   ShoppingBag,
   ArrowRight,
 } from 'lucide-react'
-import { mockBlogPosts } from './BlogPage'
+import { mockBlogPosts } from './blogData'
 import { formatDate } from '@/utils'
 import { useToastStore } from '@/store'
 

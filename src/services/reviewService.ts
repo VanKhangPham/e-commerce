@@ -1,63 +1,87 @@
-import { mockReviews } from '@/data'
 import type { ProductReview } from '@/types'
-import { fakeDelay, getStoredData, setStoredData } from './apiHelper'
+import { api } from './httpClient'
 
-const STORAGE_KEY_REVIEWS = 'nova_reviews_data'
-
-function loadReviews(): ProductReview[] {
-  return getStoredData<ProductReview[]>(STORAGE_KEY_REVIEWS, mockReviews)
+interface BackendReview {
+  id: string
+  productId: string
+  userId: string
+  userName?: string
+  userAvatar?: string | null
+  user?: { id: string; name: string; avatar?: string | null }
+  rating: number
+  comment: string
+  createdAt: string
+  approved: boolean
+  orderVerified?: boolean
 }
 
-function saveReviews(reviews: ProductReview[]): void {
-  setStoredData(STORAGE_KEY_REVIEWS, reviews)
+function formatReview(r: BackendReview): ProductReview {
+  return {
+    id: r.id,
+    productId: r.productId,
+    userId: r.userId,
+    userName: r.userName || r.user?.name || 'Khách hàng NOVA',
+    userAvatar: r.userAvatar || r.user?.avatar || undefined,
+    rating: r.rating,
+    comment: r.comment,
+    createdAt: r.createdAt || new Date().toISOString(),
+    approved: Boolean(r.approved),
+    orderVerified: Boolean(r.orderVerified),
+  }
 }
 
 export const reviewService = {
+  /**
+   * Get reviews for a product (or all reviews for admin)
+   */
   async getReviews(productId?: string): Promise<ProductReview[]> {
-    await fakeDelay(200)
-    const list = loadReviews()
     if (productId) {
-      return list.filter((r) => r.productId === productId && r.approved)
+      const res = await api.get<BackendReview[]>(`/reviews/product/${productId}`)
+      return (res.data || []).map(formatReview)
+    } else {
+      const res = await api.get<BackendReview[]>('/admin/reviews?limit=100')
+      return (res.data || []).map(formatReview)
     }
-    return list
   },
 
+  /**
+   * Get all reviews for admin panel
+   */
   async getAllReviewsAdmin(): Promise<ProductReview[]> {
-    await fakeDelay(250)
-    return loadReviews()
+    return this.getReviews()
   },
 
+  /**
+   * Add a review (Authenticated user)
+   */
   async addReview(data: Omit<ProductReview, 'id' | 'createdAt' | 'approved'>): Promise<ProductReview> {
-    await fakeDelay(350)
-    const list = loadReviews()
-    const newReview: ProductReview = {
-      ...data,
-      id: `rev-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      approved: true, // auto approve in mock mode
-    }
-    list.unshift(newReview)
-    saveReviews(list)
-    return newReview
+    const res = await api.post<BackendReview>('/reviews', {
+      productId: data.productId,
+      rating: data.rating,
+      comment: data.comment,
+    })
+    return formatReview(res.data)
   },
 
+  /**
+   * Admin: Approve or reject review
+   */
   async toggleReviewApproval(reviewId: string): Promise<ProductReview> {
-    await fakeDelay(250)
-    const list = loadReviews()
-    const index = list.findIndex((r) => r.id === reviewId)
-    if (index === -1) {
-      throw new Error('Đánh giá không tồn tại')
-    }
-    list[index].approved = !list[index].approved
-    saveReviews(list)
-    return list[index]
+    const all = await this.getAllReviewsAdmin()
+    const target = all.find((r) => r.id === reviewId)
+    const newApprovedState = target ? !target.approved : true
+
+    const res = await api.patch<BackendReview>(`/admin/reviews/${reviewId}/approve`, {
+      approved: newApprovedState,
+    })
+    return formatReview(res.data)
   },
 
+  /**
+   * Delete review
+   */
   async deleteReview(reviewId: string): Promise<boolean> {
-    await fakeDelay(250)
-    const list = loadReviews()
-    const filtered = list.filter((r) => r.id !== reviewId)
-    saveReviews(filtered)
+    await api.delete(`/admin/reviews/${reviewId}`)
     return true
   },
 }

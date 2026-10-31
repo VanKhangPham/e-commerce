@@ -102,6 +102,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
 
   const handleLogout = () => {
     logout()
+    useCartStore.getState().clearCart()
+    useWishlistStore.getState().clearWishlist()
     showToast('Đã đăng xuất tài khoản thành công', 'info')
     navigate('/')
   }

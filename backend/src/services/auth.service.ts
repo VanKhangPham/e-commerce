@@ -91,10 +91,6 @@ export class AuthService {
       throw ApiError.badRequest('Email hoặc mật khẩu không chính xác');
     }
 
-    if (user.role === 'ADMIN') {
-      throw ApiError.forbidden('Tài khoản quản trị viên vui lòng đăng nhập tại trang quản trị (/admin/login)');
-    }
-
     if (user.isBlocked) {
       throw ApiError.forbidden('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ hỗ trợ');
     }

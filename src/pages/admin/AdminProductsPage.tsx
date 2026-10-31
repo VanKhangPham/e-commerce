@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Plus,
   Search,
@@ -46,7 +46,7 @@ export const AdminProductsPage: React.FC = () => {
   const [formIsFeatured, setFormIsFeatured] = useState(false)
   const [formIsFlashSale, setFormIsFlashSale] = useState(false)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
       const [cats, prodsRes] = await Promise.all([
@@ -55,19 +55,19 @@ export const AdminProductsPage: React.FC = () => {
       ])
       setCategories(cats)
       setProducts(prodsRes.items)
-      if (cats.length > 0 && !formCategoryId) {
-        setFormCategoryId(cats[0].id)
+      if (cats.length > 0) {
+        setFormCategoryId((prev) => prev || cats[0].id)
       }
     } catch (err) {
       console.error('Failed to load admin products:', err)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
 
   // Open Add Modal
   const handleOpenAdd = () => {
@@ -284,7 +284,7 @@ export const AdminProductsPage: React.FC = () => {
           <select
             value={stockFilter}
             onChange={(e) => {
-              setStockFilter(e.target.value as any)
+              setStockFilter(e.target.value as 'all' | 'in_stock' | 'low_stock' | 'out_of_stock')
               setCurrentPage(1)
             }}
             className="bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer"

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { authService } from '@/services'
+import { api } from '@/services/httpClient'
 import type { AuthSession, UserProfile, UserRole } from '@/types'
 
 const STORAGE_KEY_AUTH = 'nova_auth_session'
@@ -7,23 +8,28 @@ const STORAGE_KEY_AUTH = 'nova_auth_session'
 interface AuthState {
   currentUser: UserProfile | null
   token: string | null
+  refreshToken: string | null
   role: UserRole | null
   isAuthenticated: boolean
   isLoading: boolean
 
   // Actions
-  login: (email: string, pass: string, role?: UserRole) => Promise<void>
-  loginDemo: (role: 'user' | 'admin') => Promise<void>
-  register: (name: string, email: string, pass: string, phone: string) => Promise<void>
+  login: (email: string, pass: string, role?: UserRole) => Promise<UserProfile>
+  loginDemo: (role: 'user' | 'admin') => Promise<UserProfile>
+  register: (name: string, email: string, pass: string, phone: string) => Promise<UserProfile>
   logout: () => void
   updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>
 }
 
-function loadInitialSession(): AuthSession | null {
+interface StoredSession extends AuthSession {
+  refreshToken?: string
+}
+
+function loadInitialSession(): StoredSession | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_AUTH)
     if (!raw) return null
-    const session = JSON.parse(raw) as AuthSession
+    const session = JSON.parse(raw) as StoredSession
     if (Date.now() > session.expiresAt) {
       localStorage.removeItem(STORAGE_KEY_AUTH)
       return null
@@ -39,6 +45,7 @@ const initialSession = loadInitialSession()
 export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: initialSession?.user || null,
   token: initialSession?.token || null,
+  refreshToken: initialSession?.refreshToken || null,
   role: initialSession?.role || null,
   isAuthenticated: !!initialSession?.token,
   isLoading: false,
@@ -47,8 +54,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true })
     try {
       const res = await authService.login(email, pass, role)
-      const session: AuthSession = {
+      const session: StoredSession = {
         token: res.token,
+        refreshToken: res.refreshToken,
         user: res.user,
         role: res.user.role,
         expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -57,10 +65,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         currentUser: res.user,
         token: res.token,
+        refreshToken: res.refreshToken,
         role: res.user.role,
         isAuthenticated: true,
         isLoading: false,
       })
+      return res.user
     } catch (error) {
       set({ isLoading: false })
       throw error
@@ -73,8 +83,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const email = role === 'admin' ? 'admin@nova.vn' : 'user@nova.vn'
       const pass = role === 'admin' ? 'admin123' : 'user123'
       const res = await authService.login(email, pass, role)
-      const session: AuthSession = {
+      const session: StoredSession = {
         token: res.token,
+        refreshToken: res.refreshToken,
         user: res.user,
         role: res.user.role,
         expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
@@ -83,10 +94,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         currentUser: res.user,
         token: res.token,
+        refreshToken: res.refreshToken,
         role: res.user.role,
         isAuthenticated: true,
         isLoading: false,
       })
+      return res.user
     } catch (error) {
       set({ isLoading: false })
       throw error
@@ -97,8 +110,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true })
     try {
       const res = await authService.register({ name, email, password: pass, phone })
-      const session: AuthSession = {
+      const session: StoredSession = {
         token: res.token,
+        refreshToken: res.refreshToken,
         user: res.user,
         role: res.user.role,
         expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
@@ -107,10 +121,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         currentUser: res.user,
         token: res.token,
+        refreshToken: res.refreshToken,
         role: res.user.role,
         isAuthenticated: true,
         isLoading: false,
       })
+      return res.user
     } catch (error) {
       set({ isLoading: false })
       throw error
@@ -118,10 +134,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    // Attempt server-side logout (fire-and-forget)
+    const currentRefreshToken = get().refreshToken
+    if (currentRefreshToken) {
+      api.post('/auth/logout', { refreshToken: currentRefreshToken }).catch(() => {
+        // Ignore errors — we're logging out anyway
+      })
+    }
+
     localStorage.removeItem(STORAGE_KEY_AUTH)
     set({
       currentUser: null,
       token: null,
+      refreshToken: null,
       role: null,
       isAuthenticated: false,
       isLoading: false,
