@@ -1,6 +1,6 @@
 # NOVA Commerce - Backend REST API
 
-Hệ thống Backend REST API phục vụ nền tảng thương mại điện tử NOVA Commerce, xây dựng theo kiến trúc phân tầng (layered architecture), bảo mật cao và tối ưu hiệu năng.
+Hệ thống Backend REST API phục vụ nền tảng thương mại điện tử NOVA Commerce, xây dựng theo kiến trúc phân tầng (layered architecture), bảo mật cao và tối ưu hiệu năng..
 
 ---
 
