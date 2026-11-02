@@ -2,7 +2,6 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 
 import { env } from './config/env.js';
@@ -47,11 +46,6 @@ export const createApp = (): Express => {
   app.use(morgan(env.isDevelopment ? 'dev' : 'combined'));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // 2. Static File Serving for uploads
-  const uploadsPath = path.resolve(process.cwd(), env.UPLOAD_DIR);
-  app.use('/uploads', express.static(uploadsPath));
-
   // 3. Swagger UI Documentation
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 

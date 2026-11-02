@@ -3,6 +3,11 @@ import { AuthService } from '../services/auth.service.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import {
+  deleteImages,
+  getKeyFromPublicUrl,
+  uploadImageToStorage,
+} from '../services/storage.service.js';
 
 export class AuthController {
   // Customer Register
@@ -119,8 +124,36 @@ export class AuthController {
       throw ApiError.badRequest('Vui lòng chọn tập tin ảnh đại diện');
     }
 
-    const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-    const updated = await AuthService.updateProfile(req.user.id, { avatar: avatarUrl });
+    const current = await AuthService.getProfile(req.user.id);
+    const oldAvatar: string | null | undefined = current?.avatar;
+
+    const { url: avatarUrl } = await uploadImageToStorage(req.file, 'avatars');
+
+    let updated;
+    try {
+      updated = await AuthService.updateProfile(req.user.id, { avatar: avatarUrl });
+    } catch (updateError) {
+      const newKey = getKeyFromPublicUrl(avatarUrl);
+      if (newKey) {
+        try {
+          await deleteImages([newKey]);
+        } catch (cleanupError) {
+          console.error('Failed to remove newly uploaded avatar after profile update failed:', cleanupError);
+        }
+      }
+      throw updateError;
+    }
+
+    if (oldAvatar) {
+      const oldKey = getKeyFromPublicUrl(oldAvatar);
+      if (oldKey) {
+        try {
+          await deleteImages([oldKey]);
+        } catch (cleanupError) {
+          console.error('Failed to remove previous avatar from Supabase Storage:', cleanupError);
+        }
+      }
+    }
 
     return ApiResponse.success({
       res,

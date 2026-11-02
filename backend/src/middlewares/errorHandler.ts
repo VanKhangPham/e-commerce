@@ -88,7 +88,8 @@ export const errorHandler = (
   if (err instanceof MulterError) {
     let message = 'Lỗi tải lên tập tin';
     if (err.code === 'LIMIT_FILE_SIZE') {
-      message = 'Kích thước tập tin vượt quá giới hạn cho phép (tối đa 5MB)';
+      const maxFileSizeMb = (env.MAX_FILE_SIZE / (1024 * 1024)).toFixed(1);
+      message = `Kích thước tập tin vượt quá giới hạn cho phép (tối đa ${maxFileSizeMb}MB)`;
     } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
       message = 'Trường tập tin tải lên không hợp lệ';
     }

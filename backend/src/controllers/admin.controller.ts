@@ -4,6 +4,7 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { OrderStatus } from '@prisma/client';
+import { uploadImageToStorage } from '../services/storage.service.js';
 
 export class AdminController {
   // Dashboard
@@ -58,13 +59,14 @@ export class AdminController {
       throw ApiError.badRequest('Vui lòng chọn tập tin hình ảnh để tải lên');
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const { key, url } = await uploadImageToStorage(req.file, 'products');
+
     return ApiResponse.created({
       res,
       message: 'Tải lên hình ảnh thành công',
       data: {
-        url: fileUrl,
-        filename: req.file.filename,
+        url,
+        filename: key,
         size: req.file.size,
       },
     });

@@ -5,6 +5,28 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
+const configuredMaxFileSize = Number.parseInt(process.env.MAX_FILE_SIZE || '5242880', 10);
+
+if (!Number.isSafeInteger(configuredMaxFileSize) || configuredMaxFileSize <= 0) {
+  throw new Error('Cấu hình lỗi: MAX_FILE_SIZE phải là số nguyên dương tính bằng byte.');
+}
+
+const maxFileSize =
+  process.env.VERCEL === '1'
+    ? Math.min(configuredMaxFileSize, 4 * 1024 * 1024)
+    : configuredMaxFileSize;
+
+// Bắt buộc phải có, thiếu là báo lỗi rõ ràng (mọi môi trường)
+function requireEnv(name: string, hint?: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `Cấu hình Supabase lỗi: Thiếu biến môi trường ${name} trong file .env.` +
+        (hint ? ` ${hint}` : '')
+    );
+  }
+  return value;
+}
 
 // In production, enforce strong secrets and valid database URL
 if (isProduction) {
@@ -33,6 +55,19 @@ if (isProduction) {
   }
 }
 
+// Kiểm tra SUPABASE_URL hợp lệ
+const supabaseUrl = requireEnv(
+  'SUPABASE_URL',
+  'Lấy ở Supabase Dashboard → Project Settings → API (dạng https://xxxx.supabase.co).'
+);
+try {
+  new URL(supabaseUrl);
+} catch {
+  throw new Error(
+    `Cấu hình Supabase lỗi: SUPABASE_URL không phải URL hợp lệ (đang là "${supabaseUrl}").`
+  );
+}
+
 export const env = {
   PORT: parseInt(process.env.PORT || '5000', 10),
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -44,8 +79,18 @@ export const env = {
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'nova_super_secure_refresh_secret_key_2026_xyz',
   JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-  UPLOAD_DIR: process.env.UPLOAD_DIR || 'uploads',
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE || '5242880', 10), // 5MB default
+  MAX_FILE_SIZE: maxFileSize,
+
+  SUPABASE_URL: supabaseUrl,
+  SUPABASE_SERVICE_ROLE_KEY: requireEnv(
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'Lấy ở Supabase Dashboard → Project Settings → API (chỉ dùng ở server, không đưa lên client).'
+  ),
+  SUPABASE_STORAGE_BUCKET: requireEnv(
+    'SUPABASE_STORAGE_BUCKET',
+    'Ví dụ: nova-image (phải khớp chính xác tên bucket đã tạo).'
+  ),
+
   isDevelopment,
   isProduction,
 };

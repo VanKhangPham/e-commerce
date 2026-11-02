@@ -12,7 +12,7 @@ Hệ thống Backend REST API phục vụ nền tảng thương mại điện t�
 - **Xác thực & Phân quyền**: JWT (Access Token 15m + Refresh Token 7d lưu DB), bcryptjs (mã hóa mật khẩu)
 - **Kiểm thực dữ liệu (Validation)**: Zod Schema Validation (Body, Params, Query)
 - **Bảo mật**: Helmet (HTTP security headers), CORS (cho phép Vite Dev Server), Express Rate Limit
-- **Tập tin tĩnh & Upload**: Multer (Upload avatar, hình ảnh sản phẩm)
+- **Tập tin & Upload**: Multer nhận ảnh trong bộ nhớ, Supabase Storage lưu ảnh lâu dài
 - **Tài liệu API**: Swagger UI (OpenAPI 3.0) tích hợp trực tiếp tại `/api/docs`
 - **Ghi nhật ký (Logging)**: Morgan (chuẩn format dev/combined)
 
@@ -23,6 +23,18 @@ Hệ thống Backend REST API phục vụ nền tảng thương mại điện t�
 - **Node.js**: Phiên bản 20.x trở lên
 - **npm**: Phiên bản 10.x trở lên
 - **Docker & Docker Compose**: Để khởi chạy cơ sở dữ liệu PostgreSQL và Adminer GUI
+
+### Cấu hình Supabase Storage
+
+Tạo bucket ảnh (ví dụ `nova-images`) trong Supabase Storage và đặt bucket public nếu ảnh sản phẩm/avatar cần hiển thị công khai. Thêm các biến sau vào `backend/.env` và Environment Variables của backend trên Vercel:
+
+```env
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<server-only-secret>
+SUPABASE_STORAGE_BUCKET=nova-images
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` chỉ được dùng phía backend vì key này có quyền quản trị Storage; không đưa vào frontend hoặc repository. Upload chỉ chấp nhận JPEG, PNG, WEBP. Trên Vercel, kích thước file được giới hạn tối đa 4 MB để nằm dưới giới hạn request body của Functions.
 
 ---
 
