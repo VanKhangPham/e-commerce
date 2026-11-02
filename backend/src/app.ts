@@ -19,6 +19,7 @@ export const createApp = (): Express => {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     })
   );
+  
 
   const allowedOrigins = env.isProduction
     ? env.CLIENT_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
@@ -60,4 +61,8 @@ export const createApp = (): Express => {
   app.use(errorHandler);
 
   return app;
+  
 };
+
+const app = createApp();
+export default app;
